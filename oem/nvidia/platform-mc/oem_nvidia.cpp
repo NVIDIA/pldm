@@ -29,6 +29,8 @@
 
 #include <phosphor-logging/lg2.hpp>
 
+#include <algorithm>
+#include <map>
 #include <string>
 #include <string_view>
 
@@ -545,14 +547,59 @@ static exec::task<int> associatePCoreDumpToCpu(Terminus& terminus)
     co_return PLDM_SUCCESS;
 }
 
-/** @brief The name, matched as a substring of the sensor or effecter name,
- *         of the one that has @p role on @p terminus, as the SensorRoles of
- *         its PLDMDevice record give it; empty (no sensor has the role)
- *         when the record lacks the role. */
+/** @brief The name of @p sensor. */
+static std::string holderName(NumericSensor& sensor)
+{
+    return sensor.getSensorName();
+}
+
+/** @brief The name of @p effecter. */
+static std::string holderName(NumericEffecter& effecter)
+{
+    return effecter.effecterName;
+}
+
+/** @brief Whether @p holder (a sensor or effecter of @p terminus) is the one
+ *         whose auxiliary name is @p auxName: its name is that name after
+ *         the sensor name prefix of its entity type. None has an empty
+ *         @p auxName. */
+static bool hasRoleName(const Terminus& terminus, auto& holder,
+                        const std::string& auxName)
+{
+    const uint16_t entityType = std::get<1>(holder.getEntityInfo());
+    return !auxName.empty() &&
+           holderName(holder) == terminus.sensorNameFor(entityType, auxName);
+}
+
+/** @brief The auxiliary name the SensorRoles of the PLDMDevice record of
+ *         @p terminus give @p role; empty if they give it none. */
 static std::string roleName(const Terminus& terminus, const std::string& role)
 {
-    auto it = terminus.sensorRoles.find(role);
-    return it != terminus.sensorRoles.end() ? it->second : std::string{};
+    const std::map<std::string, std::string>::const_iterator it =
+        terminus.sensorRoles.find(role);
+    return it == terminus.sensorRoles.end() ? std::string{} : it->second;
+}
+
+/** @brief Log, once per role and name, that none of @p holders (the sensors
+ *         or the effecters of @p terminus) has the auxiliary name
+ *         @p auxName that the PLDMDevice record gives @p role
+ *         (hasRoleName()). */
+static void warnIfNoRoleHolder(Terminus& terminus, const std::string& role,
+                               const std::string& auxName, const auto& holders)
+{
+    if (auxName.empty() ||
+        std::ranges::any_of(holders, [&](const auto& holder) {
+            return hasRoleName(terminus, *holder, auxName);
+        }))
+    {
+        return;
+    }
+    if (terminus.unmatchedSensorRoles.emplace(role, auxName).second)
+    {
+        lg2::warning("TID {TID}: no sensor or effecter has the auxiliary name "
+                     "{NAME} that the PLDMDevice record gives role {ROLE}",
+                     "TID", terminus.getTid(), "NAME", auxName, "ROLE", role);
+    }
 }
 
 exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
@@ -689,6 +736,8 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
 
     const std::string cpuPrimaryTempSensor =
         roleName(terminus, pldm::em_device::primaryTemperatureSensor);
+    warnIfNoRoleHolder(terminus, pldm::em_device::primaryTemperatureSensor,
+                       cpuPrimaryTempSensor, terminus.numericSensors);
     for (auto sensor : terminus.numericSensors)
     {
         auto sensorEventInfo = terminus.getSensorEventInfo(sensor->sensorId);
@@ -697,9 +746,7 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
             sensor->updateSensorEventInfo(sensorEventInfo);
         }
 
-        if (cpuPrimaryTempSensor.empty() ||
-            sensor->getSensorName().find(cpuPrimaryTempSensor) ==
-                std::string::npos ||
+        if (!hasRoleName(terminus, *sensor, cpuPrimaryTempSensor) ||
             !sensor->associationDefinitionsIntf)
         {
             continue;
@@ -729,11 +776,11 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
     // generic layer has already associated via chassis/all_sensors.
     const std::string cpuPrimaryPowerSensor =
         roleName(terminus, pldm::em_device::primaryPowerSensor);
+    warnIfNoRoleHolder(terminus, pldm::em_device::primaryPowerSensor,
+                       cpuPrimaryPowerSensor, terminus.numericSensors);
     for (auto sensor : terminus.numericSensors)
     {
-        if (cpuPrimaryPowerSensor.empty() ||
-            sensor->getSensorName().find(cpuPrimaryPowerSensor) ==
-                std::string::npos ||
+        if (!hasRoleName(terminus, *sensor, cpuPrimaryPowerSensor) ||
             !sensor->associationDefinitionsIntf)
         {
             continue;
@@ -783,11 +830,11 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
     // primary_temperature_sensor drives TemperatureCelsius.
     const std::string cpuPrimaryCpupowerSensor =
         roleName(terminus, pldm::em_device::primaryCpupowerSensor);
+    warnIfNoRoleHolder(terminus, pldm::em_device::primaryCpupowerSensor,
+                       cpuPrimaryCpupowerSensor, terminus.numericSensors);
     for (auto sensor : terminus.numericSensors)
     {
-        if (cpuPrimaryCpupowerSensor.empty() ||
-            sensor->getSensorName().find(cpuPrimaryCpupowerSensor) ==
-                std::string::npos ||
+        if (!hasRoleName(terminus, *sensor, cpuPrimaryCpupowerSensor) ||
             !sensor->associationDefinitionsIntf)
         {
             continue;
@@ -819,16 +866,12 @@ exec::task<int> nvidiaUpdateAssociations(Terminus& terminus)
 
     const std::string cpuPrimaryPowerControl =
         roleName(terminus, pldm::em_device::primaryPowerControl);
+    warnIfNoRoleHolder(terminus, pldm::em_device::primaryPowerControl,
+                       cpuPrimaryPowerControl, terminus.numericEffecters);
     for (auto effecter : terminus.numericEffecters)
     {
-        if (cpuPrimaryPowerControl.empty() || !effecter->hasAssociationIntf())
-        {
-            continue;
-        }
-
-        sdbusplus::object_path effecterObjPath(effecter->path);
-        if (effecterObjPath.filename().find(cpuPrimaryPowerControl) ==
-            std::string::npos)
+        if (!hasRoleName(terminus, *effecter, cpuPrimaryPowerControl) ||
+            !effecter->hasAssociationIntf())
         {
             continue;
         }

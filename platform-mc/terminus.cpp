@@ -2349,6 +2349,16 @@ std::string Terminus::buildSensorNamePrefix(uint16_t entityType) const
     return std::format("{}_{}", terminusName, entityTag);
 }
 
+std::string Terminus::sensorNameFor(uint16_t entityType,
+                                    const std::string& auxName) const
+{
+    if (terminusName.empty())
+    {
+        return auxName;
+    }
+    return std::format("{}_{}", buildSensorNamePrefix(entityType), auxName);
+}
+
 void Terminus::addNumericSensor(
     const std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr)
 {

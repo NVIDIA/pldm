@@ -6632,30 +6632,59 @@ TEST_F(
     EXPECT_EQ(PLDM_SUCCESS, std::get<0>(*updateRc));
 }
 
+TEST_F(TerminusTest, sensorNameForPrefixesTheAuxNameLikeTheSensorNames)
+{
+    std::string uuid("00000000-0000-0000-0000-0000000001d6");
+    Terminus terminus(0xD6, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    // without a terminus name, sensors keep their auxiliary names
+    EXPECT_EQ("TempLimit_0",
+              terminus.sensorNameFor(PLDM_ENTITY_PROC, "TempLimit_0"));
+
+    terminus.setTerminusName("ProcessorModule_0");
+    terminus.setCpuIndex(1);
+    EXPECT_EQ("ProcessorModule_0_CPU_1_TempLimit_0",
+              terminus.sensorNameFor(PLDM_ENTITY_PROC, "TempLimit_0"));
+    EXPECT_EQ("ProcessorModule_0_Vreg_1_CpuPower_0",
+              terminus.sensorNameFor(PLDM_ENTITY_POWER_SUPPLY, "CpuPower_0"));
+    // an entity type without a tag
+    EXPECT_EQ("ProcessorModule_0_Board_0",
+              terminus.sensorNameFor(PLDM_ENTITY_SYS_BOARD, "Board_0"));
+}
+
 TEST_F(TerminusTest, nvidiaUpdateAssociationsTakesTheRolesOfTheRecord)
 {
-    // Each role of the record names a sensor or effecter of the terminus.
-    // A role goes to the one it names only; a role the record lacks goes
-    // to none.
+    // Each role of the record is the auxiliary name of one sensor or
+    // effecter of the terminus. A role goes to the one whose name is that
+    // auxiliary name after the name prefix of its entity type, also when
+    // old firmware put the entity tag into the auxiliary name. A name that
+    // merely contains it has no role, and a role the record lacks goes to
+    // none.
     std::string uuid("00000000-0000-0000-0000-0000000001d7");
     Terminus terminus(0xD7, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
                       terminusManager);
-    std::string chassis{
+    terminus.setTerminusName("ProcessorModule_0");
+    terminus.setCpuIndex(1);
+    const std::string chassis{
         "/xyz/openbmc_project/inventory/system/chassis/ProcessorModule_0"};
+    systemInventoryPath() = chassis;
     namespace em = pldm::em_device;
     const std::map<std::string, std::string> recordRoles{
-        {em::primaryTemperatureSensor, "ProcessorModule_0_CPU_0_TempLimit_0"},
-        {em::primaryPowerSensor, "ProcessorModule_0_CPU_0_EnforcedEDPc_0"},
-        {em::primaryCpupowerSensor, "ProcessorModule_0_Vreg_0_CpuPower_0"},
-        {em::primaryPowerControl,
-         "ProcessorModule_0_CPU_0_TDPPowerNonvolatile_0"}};
-    std::vector<std::string> sensorNames;
-    std::vector<std::string> effecterNames;
-    for (const auto& [role, name] : recordRoles)
-    {
-        (role == em::primaryPowerControl ? effecterNames : sensorNames)
-            .push_back(name);
-    }
+        {em::primaryTemperatureSensor, "TempLimit_0"},
+        {em::primaryPowerSensor, "EnforcedEDPc_0"},
+        {em::primaryCpupowerSensor, "CpuPower_0"},
+        {em::primaryPowerControl, "TDPPowerNonvolatile_0"}};
+    // the auxiliary name and entity type of each sensor and effecter
+    const std::vector<std::pair<std::string, uint16_t>> sensors{
+        {"TempLimit_0", PLDM_ENTITY_PROC},
+        {"TempLimit_01", PLDM_ENTITY_PROC},
+        {"Max_TempLimit_0", PLDM_ENTITY_PROC},
+        // old firmware: the entity tag is in the auxiliary name
+        {"CPU_1_EnforcedEDPc_0", PLDM_ENTITY_PROC},
+        {"CpuPower_0", PLDM_ENTITY_POWER_SUPPLY}};
+    const std::vector<std::pair<std::string, uint16_t>> effecters{
+        {"TDPPowerNonvolatile_0", PLDM_ENTITY_PROC},
+        {"TDPPowerNonvolatile_01", PLDM_ENTITY_PROC}};
 
     // role -> (name, chassis path) of each primary_* association, one
     // entry per association so that a duplicate shows
@@ -6665,27 +6694,34 @@ TEST_F(TerminusTest, nvidiaUpdateAssociationsTakesTheRolesOfTheRecord)
         [&](const std::map<std::string, std::string>& sensorRoles) {
             terminus.numericSensors.clear();
             terminus.numericEffecters.clear();
+            terminus.sensorAuxiliaryNamesTbl.clear();
+            terminus.effecterAuxiliaryNamesTbl.clear();
             terminus.sensorRoles = sensorRoles;
             uint16_t id = 0x900;
-            for (auto name : sensorNames)
+            for (const auto& [auxName, entityType] : sensors)
             {
-                terminus.numericSensors.emplace_back(
-                    std::make_shared<NumericSensor>(
-                        terminus.getTid(), false,
-                        makeNumericSensorValuePdrStruct(id++), name, chassis,
-                        nullptr));
+                terminus.sensorAuxiliaryNamesTbl.emplace_back(
+                    std::make_shared<SensorAuxiliaryNames>(
+                        id, 1,
+                        pldm::platform_mc::AuxiliaryNames{{{"en", auxName}}}));
+                terminus.addNumericSensor(
+                    makeNumericSensorValuePdrStruct(id++, entityType));
             }
-            for (const auto& name : effecterNames)
+            for (const auto& [auxName, entityType] : effecters)
             {
+                terminus.effecterAuxiliaryNamesTbl.emplace_back(
+                    std::make_shared<EffecterAuxiliaryNames>(
+                        id, 1,
+                        pldm::platform_mc::AuxiliaryNames{{{"en", auxName}}}));
                 // a CPU power effecter: chassis/power_controls
-                auto pdr =
-                    makeNumericEffecterValuePdrStruct(id++, PLDM_ENTITY_PROC);
+                std::shared_ptr<pldm_numeric_effecter_value_pdr> pdr =
+                    makeNumericEffecterValuePdrStruct(id++, entityType);
                 pdr->base_unit = PLDM_SENSOR_UNIT_WATTS;
-                terminus.numericEffecters.emplace_back(
-                    std::make_shared<NumericEffecter>(terminus.getTid(), false,
-                                                      pdr, name, chassis,
-                                                      terminusManager));
+                pdr->effecter_auxiliary_names = true;
+                terminus.addNumericEffecter(pdr);
             }
+            EXPECT_EQ(sensors.size(), terminus.numericSensors.size());
+            EXPECT_EQ(effecters.size(), terminus.numericEffecters.size());
 
             auto rc =
                 syncWaitWithDbusIo(nvidia::nvidiaUpdateAssociations(terminus));
@@ -6718,21 +6754,56 @@ TEST_F(TerminusTest, nvidiaUpdateAssociationsTakesTheRolesOfTheRecord)
             return holders;
         };
 
+    const std::map<std::string, std::string> holderOf{
+        {em::primaryTemperatureSensor, "ProcessorModule_0_CPU_1_TempLimit_0"},
+        {em::primaryPowerSensor, "ProcessorModule_0_CPU_1_EnforcedEDPc_0"},
+        {em::primaryCpupowerSensor, "ProcessorModule_0_Vreg_1_CpuPower_0"},
+        {em::primaryPowerControl,
+         "ProcessorModule_0_CPU_1_TDPPowerNonvolatile_0"}};
     Holders expected;
-    for (const auto& [role, name] : recordRoles)
+    for (const auto& [role, name] : holderOf)
     {
         expected[role] = {{name, chassis}};
     }
     EXPECT_EQ(expected, rolesAfterUpdate(recordRoles));
+    EXPECT_TRUE(terminus.unmatchedSensorRoles.empty());
 
     // A record with one role, and none.
-    for (const auto& [role, name] : recordRoles)
+    for (const auto& [role, auxName] : recordRoles)
     {
-        EXPECT_EQ((Holders{{role, {{name, chassis}}}}),
-                  rolesAfterUpdate({{role, name}}))
+        EXPECT_EQ((Holders{{role, {{holderOf.at(role), chassis}}}}),
+                  rolesAfterUpdate({{role, auxName}}))
             << role;
     }
     EXPECT_EQ(Holders{}, rolesAfterUpdate({}));
+
+    // A role whose name is no auxiliary name of the terminus, also the full
+    // name of a sensor, or empty, goes to none; all but the empty one are
+    // logged.
+    for (const auto& auxName :
+         {std::string("TempLimit_9"), holderOf.at(em::primaryTemperatureSensor),
+          std::string()})
+    {
+        EXPECT_EQ(Holders{},
+                  rolesAfterUpdate({{em::primaryTemperatureSensor, auxName}}))
+            << auxName;
+    }
+    const std::set<std::pair<std::string, std::string>> unmatched{
+        {em::primaryTemperatureSensor, "TempLimit_9"},
+        {em::primaryTemperatureSensor,
+         holderOf.at(em::primaryTemperatureSensor)}};
+    EXPECT_EQ(unmatched, terminus.unmatchedSensorRoles);
+
+    // A sensor that the record renames (AuxNames) has the record's name, not
+    // the name of its auxiliary name after the prefix: it gets no role, and
+    // the role is logged.
+    terminus.sensorAuxNameOverwriteTbl[0x900] = std::make_tuple(
+        pldm::platform_mc::AuxiliaryNames{{{"en", "CPU_Temp"}}}, chassis);
+    EXPECT_EQ(Holders{}, rolesAfterUpdate(
+                             {{em::primaryTemperatureSensor, "TempLimit_0"}}));
+    EXPECT_EQ("CPU_Temp", terminus.numericSensors.front()->getSensorName());
+    EXPECT_TRUE(terminus.unmatchedSensorRoles.contains(
+        {em::primaryTemperatureSensor, "TempLimit_0"}));
 }
 
 TEST_F(TerminusTest, nvidiaEnergyCountPdrParserCoverageMatrix)

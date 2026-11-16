@@ -42,6 +42,8 @@
 #include <xyz/openbmc_project/Inventory/Item/NetworkInterface/server.hpp>
 
 #include <coroutine>
+#include <set>
+#include <utility>
 
 using namespace pldm::pdr;
 
@@ -376,10 +378,19 @@ class Terminus
     void loadSensorRoles();
 
     /** @brief The SensorRoles of the record loadSensorRoles() read: role
-     *         (em_device::primaryTemperatureSensor, ...) -> sensor or
-     *         effecter name. Empty without a record; a role it lacks has no
-     *         sensor or effecter. */
+     *         (em_device::primaryTemperatureSensor, ...) -> auxiliary name
+     *         of the sensor or effecter that has it, as the device names it
+     *         ("TempLimit_0"). The role goes to the sensor or effecter whose
+     *         name is sensorNameFor() its entity type and that auxiliary
+     *         name; a sensor that the record renames (AuxNames) has no
+     *         role. Empty without a record; a role it lacks has no sensor
+     *         or effecter. */
     std::map<std::string, std::string> sensorRoles;
+
+    /** @brief The (role, auxiliary name) pairs of sensorRoles that no
+     *         sensor or effecter of this terminus had when
+     *         nvidiaUpdateAssociations() ran, so that each is logged once. */
+    std::set<std::pair<std::string, std::string>> unmatchedSensorRoles;
 #endif
     bool checkNsmDeviceInventory(UUID nsmUuid);
 
@@ -494,6 +505,18 @@ class Terminus
         return std::nullopt;
 #endif
     }
+
+    /** @brief The name this terminus gives a sensor or effecter of
+     *         @p entityType whose auxiliary name is @p auxName: @p auxName
+     *         after the sensor name prefix of the entity type
+     *         (buildSensorNamePrefix()), or @p auxName alone when the
+     *         terminus has no name.
+     *
+     *  Old firmware that already puts the entity tag into the auxiliary
+     *  name ("CPU_0_TempLimit_0") gets the same name for the plain one.
+     */
+    std::string sensorNameFor(uint16_t entityType,
+                              const std::string& auxName) const;
 
     /** @brief The setter to set terminus's CPU index */
     void setCpuIndex(uint16_t idx)
