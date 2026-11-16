@@ -1044,6 +1044,43 @@ TEST_F(EmConfigTopologyTest, fetchComponentInfoUnpacksTheDeviceRecord)
               info->emComponents.at(16));
 }
 
+TEST_F(EmConfigTopologyTest, fetchComponentInfoUnpacksTheDownstreamDevices)
+{
+    // The optical transceiver of a CX9 IO board is a downstream device of
+    // its record, plugged into the ports of the device.
+    addDevice("CX_1", "cx9_io", 63, "bridge");
+    addRecord("CX_1_PLDM", {{"FW_CX_1", uint64_t{1}}});
+    const std::string base(pldmDeviceIntf);
+    const std::string recordPath = "/em/rec/CX_1_PLDM";
+    EmConfigTestDBusHandler::setProps(
+        recordPath, pldmDeviceIntf,
+        {{"Name", std::string("CX_1_PLDM")},
+         {"NetworkAdapter", std::string("NIC_0")}});
+    EmConfigTestDBusHandler::setProps(recordPath, base + ".DownstreamDevices",
+                                      {{"Optical_Transceiver_1", uint64_t{1}}});
+    EmConfigTestDBusHandler::setProps(
+        recordPath, base + ".Ports",
+        {{"200", std::string("C4_1")}, {"201", std::string("C3_2")}});
+    Configurations configurations;
+    configurations.emplace("/em/cx", makeMctpInfo(63, "CX_1"));
+
+    auto info = em_config::fetchComponentInfo(configurations, 63);
+    ASSERT_TRUE(info.has_value());
+    ASSERT_EQ(1U, info->downstreamDevices.size());
+    const auto& device = info->downstreamDevices.at(1);
+    EXPECT_EQ(1, device.index);
+    EXPECT_EQ("Optical_Transceiver_1", device.name);
+    EXPECT_EQ("IEEE_OUI", device.manufacturerNameSource);
+    const std::string ports =
+        "/xyz/openbmc_project/inventory/system/chassis/CX_1/NetworkAdapters/"
+        "NIC_0/Ports/";
+    EXPECT_EQ((Associations{{"inventory", "activation", ports + "C4_1"},
+                            {"inventory", "activation", ports + "C3_2"}}),
+              device.associations);
+    // the transceiver is not a component of the device itself
+    EXPECT_EQ(1U, info->emComponents.size());
+}
+
 TEST_F(EmConfigTopologyTest, fetchComponentInfoNeedsTheRecordAndTheDevice)
 {
     // A record of a device the topology does not describe, a device whose

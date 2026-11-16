@@ -85,6 +85,9 @@ struct PldmDevice
     // ids of the components listed as FWInventoryOnlyComponent
     std::set<uint16_t> inventoryOnly;
     std::map<uint16_t, std::string> auxNames;
+    // downstream device index -> name of its software object, from
+    // DownstreamDevices (the optical transceivers of a CX9)
+    std::map<uint16_t, std::string> downstreamDevices;
     // sensor id -> port name; the port is under the device's network
     // adapter, or under the device's chassis (<chassis>/Ports/<port>)
     // without one. Device-local ports only: NVSwitch fabric ports

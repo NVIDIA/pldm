@@ -137,6 +137,28 @@ TEST(EmDevicePolicyComponentRule, cxFirmwareBelongsToTheNicAndTheChassis)
     EXPECT_TRUE(rule.chassisEndpoint.empty());
 }
 
+TEST(EmDevicePolicyDownstreamRule, devicesSitOnThePortsOfTheDevice)
+{
+    PldmDevice record;
+    record.networkAdapter = "NIC_0";
+    record.ports = {{201, "C3_2"}, {200, "C4_1"}};
+    const auto dev = device("CX_1", "cx9_io");
+
+    auto rule = downstreamRule(dev, record);
+    EXPECT_EQ((std::vector<std::string>{
+                  chassis + "CX_1/NetworkAdapters/NIC_0/Ports/C4_1",
+                  chassis + "CX_1/NetworkAdapters/NIC_0/Ports/C3_2"}),
+              rule.endpoints);
+    EXPECT_EQ("inventory", rule.forward);
+    EXPECT_EQ("activation", rule.backward);
+    EXPECT_EQ("IEEE_OUI", rule.manufacturerNameSource);
+
+    // without a network adapter the ports belong to the chassis
+    record.networkAdapter.clear();
+    rule = downstreamRule(dev, record);
+    EXPECT_EQ(chassis + "CX_1/Ports/C4_1", rule.endpoints.front());
+}
+
 TEST(EmDevicePolicyComponentRule, hpmCpldIsALatticeComponent)
 {
     const PldmDevice record;

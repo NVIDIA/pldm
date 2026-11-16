@@ -523,6 +523,8 @@ TEST(EmDevicePldmDevice, readsTheRecordThroughTheGivenBus)
          {{"HGX_FW_CPU_0_ROM", uint64_t{2}}, {"TooBig", uint64_t{65536}}}},
         {path + "|" + base + ".SensorAuxNames",
          {{"HGX_CPU_0_TEMP_0", uint64_t{7}}, {"Bad", std::string("x")}}},
+        {path + "|" + base + ".DownstreamDevices",
+         {{"Optical_Transceiver_0", uint64_t{1}}}},
         {path + "|" + base + ".Ports",
          {{"3", std::string("HGX_CPU_0_Port_0")},
           {"x", std::string("skipped")},
@@ -554,6 +556,8 @@ TEST(EmDevicePldmDevice, readsTheRecordThroughTheGivenBus)
               record->auxNames);
     EXPECT_EQ((std::map<uint16_t, std::string>{{3, "HGX_CPU_0_Port_0"}}),
               record->ports);
+    EXPECT_EQ((std::map<uint16_t, std::string>{{1, "Optical_Transceiver_0"}}),
+              record->downstreamDevices);
 
     EXPECT_FALSE(pldmDevice("HGX_CPU_1", dbus));
 }

@@ -456,6 +456,8 @@ std::optional<PldmDevice> pldmDevice(
             out.components.emplace(id, std::move(name));
         }
         out.auxNames = nameIdMap(service, path, base + ".SensorAuxNames", bus);
+        out.downstreamDevices =
+            nameIdMap(service, path, base + ".DownstreamDevices", bus);
         out.ports = idNameMap(service, path, base + ".Ports", bus);
         out.sensorRoles = sensorRoleMap(service, path, base + ".SensorRoles",
                                         recordName, bus);

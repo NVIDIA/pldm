@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 /** @brief Firmware-update policy of the devices of the platform topology
@@ -111,6 +112,41 @@ inline ComponentRule componentRule(const Device& dev, const std::string& prefix,
     else
     {
         rule.endpoints = {chassisRoot + dev.name};
+    }
+    return rule;
+}
+
+struct DownstreamRule
+{
+    std::string forward = "inventory";
+    std::string backward = "activation";
+    /** @brief The ports of the device, by sensor id: the downstream device
+     *         is plugged into them. */
+    std::vector<std::string> endpoints;
+    /** @brief Descriptor of the downstream device the Manufacturer is
+     *         taken from. */
+    std::string manufacturerNameSource = "IEEE_OUI";
+};
+
+/** @brief Association and policy of the downstream devices of a device (the
+ *         optical transceivers of a CX9 IO board): each belongs to the
+ *         ports of the device, which sit under its network adapter or, when
+ *         it has none, under its chassis. */
+inline DownstreamRule downstreamRule(const Device& dev,
+                                     const PldmDevice& record)
+{
+    DownstreamRule rule;
+    const std::string parent =
+        record.networkAdapter.empty()
+            ? chassisRoot + dev.name
+            : chassisRoot + dev.name + "/NetworkAdapters/" +
+                  record.networkAdapter;
+    for (const auto& [id, port] : record.ports)
+    {
+        std::string endpoint = parent;
+        endpoint += "/Ports/";
+        endpoint += port;
+        rule.endpoints.push_back(std::move(endpoint));
     }
     return rule;
 }

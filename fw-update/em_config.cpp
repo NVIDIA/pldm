@@ -286,9 +286,10 @@ void unpackComponents(
 /** @brief Components of the PLDMDevice record of @p targetName (the
  *         NvDevice name), with associations and policy derived from the
  *         device kind. False when the device has no PLDMDevice record. */
-bool unpackDeviceComponents(const std::string& targetName,
-                            CreateComponentIdNameMap& emComponents,
-                            ComponentIdNameMap& idNameMap)
+bool unpackDeviceComponents(
+    const std::string& targetName, CreateComponentIdNameMap& emComponents,
+    ComponentIdNameMap& idNameMap,
+    std::map<DownstreamDeviceIndex, DownstreamDeviceConfig>& downstreamDevices)
 {
     auto record = pldm::em_device::pldmDevice(targetName);
     if (!record || record->components.empty())
@@ -323,6 +324,17 @@ bool unpackDeviceComponents(const std::string& targetName,
         emComponents[compId] = {compName, std::move(compAssocs),
                                 rule.manufacturer, rule.updateOnly};
         idNameMap[compId] = compName;
+    }
+    for (const auto& [index, name] : record->downstreamDevices)
+    {
+        auto rule = em_device_policy::downstreamRule(*dev, *record);
+        Associations assocs;
+        for (const auto& endpoint : rule.endpoints)
+        {
+            assocs.emplace_back(rule.forward, rule.backward, endpoint);
+        }
+        downstreamDevices[index] = {index, name, std::move(assocs),
+                                    rule.manufacturerNameSource};
     }
     return true;
 }
@@ -418,7 +430,8 @@ std::optional<DeviceComponentInfo> fetchComponentInfo(
 
 #ifdef OEM_NVIDIA
     DeviceComponentInfo info;
-    if (unpackDeviceComponents(targetName, info.emComponents, info.idNameMap))
+    if (unpackDeviceComponents(targetName, info.emComponents, info.idNameMap,
+                               info.downstreamDevices))
     {
         return info;
     }
@@ -543,7 +556,10 @@ std::set<std::string> fetchConfiguredFirmwareTargets()
             recordName.substr(0, recordName.size() - suffix.size());
         CreateComponentIdNameMap emComponents;
         ComponentIdNameMap idNameMap;
-        if (unpackDeviceComponents(targetName, emComponents, idNameMap) &&
+        std::map<DownstreamDeviceIndex, DownstreamDeviceConfig>
+            downstreamDevices;
+        if (unpackDeviceComponents(targetName, emComponents, idNameMap,
+                                   downstreamDevices) &&
             !expectedComponentIds(emComponents).empty())
         {
             targets.insert(targetName);
