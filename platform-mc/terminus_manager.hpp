@@ -88,8 +88,10 @@ class TerminusManager
      *  Sources, strongest first:
      *  - a PLDM device record whose MCTPTargetName is the endpoint's name:
      *    TerminusName, TerminusInstance and CpuIndex.
-     *  - with OEM_NVIDIA, the CPU NvDevice of that name: ParentChassis
-     *    without the platform prefix, Instance and CpuIndex.
+     *  - with OEM_NVIDIA, the CPU NvDevice of that name: the leaf of its
+     *    ParentChassis without the platform prefix, its Instance, and its
+     *    position among the CPUs of that module by Instance, then by Name,
+     *    as the CPU index (pldm::em_device::terminusConfig()).
      *
      *  The config is applied to the terminus of the EID when it is created.
      *  If the terminus exists already, a config that differs from its own

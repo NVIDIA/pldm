@@ -99,14 +99,12 @@ TEST_F(EmDeviceDevices, mergesTheTwoRecordsOfADevice)
               {{"Name", std::string("HGX_CPU_0")},
                {"Kind", std::string("cpu")},
                {"Instance", uint64_t{0}},
-               {"EID", uint64_t{14}},
                {"ParentChassis", std::string("HGX_ProcessorModule_0")}}},
              {topo + "|" + transportIntf, {{"Medium", std::string("usb")}}},
              {entity + "|" + nvDeviceIntf,
               {{"Name", std::string("HGX_CPU_0")},
                {"Kind", std::string("cpu")},
                {"InstanceNumber", uint64_t{0}},
-               {"CpuIndex", uint64_t{2}},
                {"EID", uint64_t{14}}}},
              {entity + "|" + transportIntf, {{"Medium", std::string("i2c")}}}});
 
@@ -115,10 +113,9 @@ TEST_F(EmDeviceDevices, mergesTheTwoRecordsOfADevice)
     EXPECT_EQ("HGX_CPU_0", out[0].name);
     EXPECT_EQ("cpu", out[0].kind);
     EXPECT_EQ("HGX_ProcessorModule_0", out[0].parentChassis);
+    // taken from the second record, the first lacks it
     EXPECT_EQ(std::optional<uint64_t>(14), out[0].eid);
     EXPECT_EQ(std::optional<uint64_t>(0), out[0].instance);
-    // taken from the second record, the first lacks it
-    EXPECT_EQ(std::optional<uint64_t>(2), out[0].cpuIndex);
     // the transport of the first record wins
     EXPECT_EQ("usb", out[0].medium);
 
@@ -168,7 +165,6 @@ TEST_F(EmDeviceDevices, keepsTheFirstValueOnConflict)
               {{"Name", std::string("HGX_CPU_0")},
                {"Kind", std::string("gpu")},
                {"Instance", uint64_t{1}},
-               {"CpuIndex", uint64_t{1}},
                {"EID", uint64_t{24}},
                {"ParentChassis", std::string("HGX_ProcessorModule_1")}}}});
 
@@ -178,7 +174,6 @@ TEST_F(EmDeviceDevices, keepsTheFirstValueOnConflict)
     EXPECT_EQ("HGX_ProcessorModule_0", out[0].parentChassis);
     EXPECT_EQ(std::optional<uint64_t>(14), out[0].eid);
     EXPECT_EQ(std::optional<uint64_t>(0), out[0].instance);
-    EXPECT_EQ(std::optional<uint64_t>(1), out[0].cpuIndex);
 }
 
 TEST_F(EmDeviceDevices, dropsAnEidOutOfRange)
@@ -213,47 +208,41 @@ TEST_F(EmDeviceDevices, dropsAnEidOutOfRange)
     EXPECT_EQ(std::optional<uint64_t>(0xFE), out[2].eid);
 }
 
-TEST_F(EmDeviceDevices, dropsAnInvalidInstanceOrCpuIndex)
+TEST_F(EmDeviceDevices, dropsAnInvalidInstance)
 {
     const std::string negative = "/inventory/platform/HGX_CPU_0";
     const std::string fraction = "/inventory/platform/HGX_CPU_1";
     const std::string text = "/inventory/platform/HGX_CPU_2";
     const std::string array = "/inventory/platform/HGX_CPU_3";
     const std::string large = "/inventory/platform/HGX_CPU_4";
-    publish(
-        {negative, fraction, text, array, large},
-        {{negative + "|" + nvDeviceIntf,
-          {{"Name", std::string("HGX_CPU_0")},
-           {"Kind", std::string("cpu")},
-           {"EID", uint64_t{14}},
-           {"Instance", int64_t{-1}},
-           {"CpuIndex", int32_t{-2}}}},
-         // an invalid Instance falls back to InstanceNumber
-         {fraction + "|" + nvDeviceIntf,
-          {{"Name", std::string("HGX_CPU_1")},
-           {"Kind", std::string("cpu")},
-           {"EID", uint64_t{15}},
-           {"Instance", 1.5},
-           {"InstanceNumber", uint64_t{1}},
-           {"CpuIndex", 2.5}}},
-         {text + "|" + nvDeviceIntf,
-          {{"Name", std::string("HGX_CPU_2")},
-           {"Kind", std::string("cpu")},
-           {"EID", uint64_t{16}},
-           {"InstanceNumber", std::string("two")},
-           {"CpuIndex", std::string("2")}}},
-         {array + "|" + nvDeviceIntf,
-          {{"Name", std::string("HGX_CPU_3")},
-           {"Kind", std::string("cpu")},
-           {"EID", uint64_t{17}},
-           {"Instance", std::vector<uint64_t>{3}},
-           {"CpuIndex", uint64_t{3}}}},
-         // Instance and CpuIndex are not bounded like an EID
-         {large + "|" + nvDeviceIntf,
-          {{"Name", std::string("HGX_CPU_4")},
-           {"Kind", std::string("cpu")},
-           {"Instance", uint64_t{0x100}},
-           {"CpuIndex", uint64_t{0x10000}}}}});
+    publish({negative, fraction, text, array, large},
+            {{negative + "|" + nvDeviceIntf,
+              {{"Name", std::string("HGX_CPU_0")},
+               {"Kind", std::string("cpu")},
+               {"EID", uint64_t{14}},
+               {"Instance", int64_t{-1}}}},
+             // an invalid Instance falls back to InstanceNumber
+             {fraction + "|" + nvDeviceIntf,
+              {{"Name", std::string("HGX_CPU_1")},
+               {"Kind", std::string("cpu")},
+               {"EID", uint64_t{15}},
+               {"Instance", 1.5},
+               {"InstanceNumber", uint64_t{1}}}},
+             {text + "|" + nvDeviceIntf,
+              {{"Name", std::string("HGX_CPU_2")},
+               {"Kind", std::string("cpu")},
+               {"EID", uint64_t{16}},
+               {"InstanceNumber", std::string("2")}}},
+             {array + "|" + nvDeviceIntf,
+              {{"Name", std::string("HGX_CPU_3")},
+               {"Kind", std::string("cpu")},
+               {"EID", uint64_t{17}},
+               {"Instance", std::vector<uint64_t>{3}}}},
+             // Instance is not bounded like an EID
+             {large + "|" + nvDeviceIntf,
+              {{"Name", std::string("HGX_CPU_4")},
+               {"Kind", std::string("cpu")},
+               {"Instance", uint64_t{0x10000}}}}});
 
     auto out = devices(dbus);
     ASSERT_EQ(5U, out.size());
@@ -262,24 +251,19 @@ TEST_F(EmDeviceDevices, dropsAnInvalidInstanceOrCpuIndex)
     EXPECT_EQ("cpu", out[0].kind);
     EXPECT_EQ(std::optional<uint64_t>(14), out[0].eid);
     EXPECT_FALSE(out[0].instance);
-    EXPECT_FALSE(out[0].cpuIndex);
     EXPECT_EQ("HGX_CPU_1", out[1].name);
     EXPECT_EQ(std::optional<uint64_t>(15), out[1].eid);
     EXPECT_EQ(std::optional<uint64_t>(1), out[1].instance);
-    EXPECT_FALSE(out[1].cpuIndex);
     // a string, even a numeric one, is dropped
     EXPECT_EQ("HGX_CPU_2", out[2].name);
     EXPECT_EQ(std::optional<uint64_t>(16), out[2].eid);
     EXPECT_FALSE(out[2].instance);
-    EXPECT_FALSE(out[2].cpuIndex);
-    // a value of a non-number type; a valid CpuIndex next to it is read
+    // a value of a non-number type
     EXPECT_EQ("HGX_CPU_3", out[3].name);
     EXPECT_EQ(std::optional<uint64_t>(17), out[3].eid);
     EXPECT_FALSE(out[3].instance);
-    EXPECT_EQ(std::optional<uint64_t>(3), out[3].cpuIndex);
     EXPECT_EQ("HGX_CPU_4", out[4].name);
-    EXPECT_EQ(std::optional<uint64_t>(0x100), out[4].instance);
-    EXPECT_EQ(std::optional<uint64_t>(0x10000), out[4].cpuIndex);
+    EXPECT_EQ(std::optional<uint64_t>(0x10000), out[4].instance);
 }
 
 TEST_F(EmDeviceDevices, dropsAValueOfAnArrayType)
@@ -293,8 +277,7 @@ TEST_F(EmDeviceDevices, dropsAValueOfAnArrayType)
               {{"Name", std::string("HGX_FPGA_0")},
                {"Kind", std::string("fpga")},
                {"EID", std::vector<uint8_t>{0x10}},
-               {"Instance", std::vector<std::string>{"1"}},
-               {"CpuIndex", uint64_t{4}}}},
+               {"Instance", std::vector<std::string>{"1"}}}},
              {bytes + "|" + transportIntf, {{"Medium", std::string("spi")}}},
              {strings + "|" + nvDeviceIntf,
               {{"Name", std::string("HGX_FPGA_1")},
@@ -307,7 +290,6 @@ TEST_F(EmDeviceDevices, dropsAValueOfAnArrayType)
     EXPECT_EQ("fpga", out[0].kind);
     EXPECT_FALSE(out[0].eid);
     EXPECT_FALSE(out[0].instance);
-    EXPECT_EQ(std::optional<uint64_t>(4), out[0].cpuIndex);
     EXPECT_EQ("spi", out[0].medium);
     EXPECT_EQ("HGX_FPGA_1", out[1].name);
     EXPECT_EQ(std::optional<uint64_t>(0x11), out[1].eid);
@@ -326,18 +308,18 @@ TEST_F(EmDeviceDevices, takesAValidValueFromTheSecondRecordAfterAnInvalidOne)
     publish({a, b}, {{a + "|" + nvDeviceIntf,
                       {{"Name", std::string("HGX_CPU_0")},
                        {"Instance", std::string("x")},
-                       {"CpuIndex", -1.0}}},
+                       {"EID", -1.0}}},
                      {b + "|" + nvDeviceIntf,
                       {{"Name", std::string("HGX_CPU_0")},
                        {"InstanceNumber", uint64_t{4}},
-                       {"CpuIndex", uint64_t{1}}}}});
+                       {"EID", uint64_t{14}}}}});
 
     auto out = devices(dbus);
     ASSERT_EQ(1U, out.size());
     // the invalid values of the first record count as absent, not as a
     // conflict that keeps the first
     EXPECT_EQ(std::optional<uint64_t>(4), out[0].instance);
-    EXPECT_EQ(std::optional<uint64_t>(1), out[0].cpuIndex);
+    EXPECT_EQ(std::optional<uint64_t>(14), out[0].eid);
 }
 
 TEST_F(EmDeviceDevices, mergesTheTransportOfTheTwoRecords)
@@ -480,32 +462,152 @@ TEST_F(EmDeviceTopChassis, isEmptyWithoutARecord)
     EXPECT_EQ("", topChassisPath(dbus));
 }
 
-TEST(EmDeviceTerminusConfig, boundsInstanceAndCpuIndex)
+namespace
+{
+
+Device cpu(const std::string& name, uint64_t instance,
+           const std::string& parentChassis)
 {
     Device dev;
-    dev.name = "HGX_CPU_0";
+    dev.name = name;
     dev.kind = "cpu";
-    dev.parentChassis = "HGX_ProcessorModule_0";
-    const std::string prefix = "HGX_";
+    dev.instance = instance;
+    dev.parentChassis = parentChassis;
+    return dev;
+}
 
-    dev.instance = 65535;
-    dev.cpuIndex = 65535;
-    auto config = terminusConfig(dev, prefix);
+} // namespace
+
+TEST(EmDeviceTerminusConfig, numbersTheTwoCpusOfOneModule)
+{
+    // C2 BMC: both CPUs are on ProcessorModule_0; no platform prefix
+    const std::vector<Device> devs{cpu("CPU_0", 0, "ProcessorModule_0"),
+                                   cpu("CPU_1", 1, "ProcessorModule_0")};
+
+    std::optional<TerminusConfig> c0 = terminusConfig(devs[0], devs, "");
+    ASSERT_TRUE(c0);
+    EXPECT_EQ("ProcessorModule_0", c0->name);
+    EXPECT_EQ(0, c0->instance);
+    EXPECT_EQ(0, c0->cpuIndex);
+    std::optional<TerminusConfig> c1 = terminusConfig(devs[1], devs, "");
+    ASSERT_TRUE(c1);
+    EXPECT_EQ("ProcessorModule_0", c1->name);
+    EXPECT_EQ(1, c1->instance);
+    EXPECT_EQ(1, c1->cpuIndex);
+}
+
+TEST(EmDeviceTerminusConfig, stripsTheTypeAndPlatformPrefixOfTheModule)
+{
+    // HMC: one CPU per module, the module type-prefixed; a GPU on the same
+    // module is no CPU to count
+    Device gpu = cpu("HGX_GPU_0", 0, "board/HGX_ProcessorModule_1");
+    gpu.kind = "gpu";
+    const std::vector<Device> devs{
+        gpu, cpu("HGX_CPU_0", 0, "board/HGX_ProcessorModule_0"),
+        cpu("HGX_CPU_1", 1, "board/HGX_ProcessorModule_1")};
+
+    std::optional<TerminusConfig> c0 = terminusConfig(devs[1], devs, "HGX_");
+    ASSERT_TRUE(c0);
+    EXPECT_EQ("ProcessorModule_0", c0->name);
+    EXPECT_EQ(0, c0->instance);
+    EXPECT_EQ(0, c0->cpuIndex);
+    std::optional<TerminusConfig> c1 = terminusConfig(devs[2], devs, "HGX_");
+    ASSERT_TRUE(c1);
+    EXPECT_EQ("ProcessorModule_1", c1->name);
+    EXPECT_EQ(1, c1->instance);
+    EXPECT_EQ(0, c1->cpuIndex);
+    EXPECT_FALSE(terminusConfig(gpu, devs, "HGX_"));
+}
+
+TEST(EmDeviceTerminusConfig, numbersTheCpusOfEachModuleByInstance)
+{
+    // two modules of two CPUs, listed out of order
+    const std::vector<Device> devs{cpu("CPU_3", 3, "ProcessorModule_1"),
+                                   cpu("CPU_1", 1, "ProcessorModule_0"),
+                                   cpu("CPU_2", 2, "ProcessorModule_1"),
+                                   cpu("CPU_0", 0, "ProcessorModule_0")};
+
+    std::map<std::string, std::pair<std::string, uint16_t>> got;
+    for (const auto& dev : devs)
+    {
+        std::optional<TerminusConfig> config = terminusConfig(dev, devs, "");
+        ASSERT_TRUE(config) << dev.name;
+        got.emplace(dev.name, std::pair{config->name, config->cpuIndex});
+    }
+    const std::map<std::string, std::pair<std::string, uint16_t>> want{
+        {"CPU_0", {"ProcessorModule_0", 0}},
+        {"CPU_1", {"ProcessorModule_0", 1}},
+        {"CPU_2", {"ProcessorModule_1", 0}},
+        {"CPU_3", {"ProcessorModule_1", 1}}};
+    EXPECT_EQ(want, got);
+}
+
+TEST(EmDeviceTerminusConfig, groupsTheCpusOfAModuleWithOrWithoutTypePrefix)
+{
+    const std::vector<Device> devs{
+        cpu("HGX_CPU_0", 0, "board/HGX_ProcessorModule_0"),
+        cpu("HGX_CPU_1", 1, "HGX_ProcessorModule_0")};
+
+    std::optional<TerminusConfig> c0 = terminusConfig(devs[0], devs, "HGX_");
+    std::optional<TerminusConfig> c1 = terminusConfig(devs[1], devs, "HGX_");
+    ASSERT_TRUE(c0);
+    ASSERT_TRUE(c1);
+    EXPECT_EQ("ProcessorModule_0", c0->name);
+    EXPECT_EQ("ProcessorModule_0", c1->name);
+    EXPECT_EQ(0, c0->cpuIndex);
+    EXPECT_EQ(1, c1->cpuIndex);
+}
+
+TEST(EmDeviceTerminusConfig, ordersCpusOfTheSameInstanceByName)
+{
+    const std::vector<Device> devs{cpu("CPU_B", 0, "ProcessorModule_0"),
+                                   cpu("CPU_A", 0, "ProcessorModule_0")};
+
+    std::optional<TerminusConfig> a = terminusConfig(devs[1], devs, "");
+    std::optional<TerminusConfig> b = terminusConfig(devs[0], devs, "");
+    ASSERT_TRUE(a);
+    ASSERT_TRUE(b);
+    EXPECT_EQ(0, a->cpuIndex);
+    EXPECT_EQ(1, b->cpuIndex);
+}
+
+TEST(EmDeviceTerminusConfig, ordersCpusByInstanceBeforeName)
+{
+    // the names sort the other way round than the instances
+    const std::vector<Device> devs{cpu("CPU_A", 1, "ProcessorModule_0"),
+                                   cpu("CPU_B", 0, "ProcessorModule_0")};
+
+    std::optional<TerminusConfig> a = terminusConfig(devs[0], devs, "");
+    std::optional<TerminusConfig> b = terminusConfig(devs[1], devs, "");
+    ASSERT_TRUE(a);
+    ASSERT_TRUE(b);
+    EXPECT_EQ(1, a->cpuIndex);
+    EXPECT_EQ(0, b->cpuIndex);
+}
+
+TEST(EmDeviceTerminusConfig, needsAModuleWithThePlatformPrefix)
+{
+    for (const auto& parent :
+         {"", "board/", "ProcessorModule_0", "board/HGX_", "HGX_"})
+    {
+        const std::vector<Device> devs{cpu("HGX_CPU_0", 0, parent)};
+        EXPECT_FALSE(terminusConfig(devs[0], devs, "HGX_")) << parent;
+    }
+    // without a platform prefix, only an empty module gives no name
+    const std::vector<Device> devs{cpu("CPU_0", 0, "")};
+    EXPECT_FALSE(terminusConfig(devs[0], devs, ""));
+}
+
+TEST(EmDeviceTerminusConfig, boundsTheInstance)
+{
+    std::vector<Device> devs{cpu("HGX_CPU_0", 65535, "HGX_ProcessorModule_0")};
+    std::optional<TerminusConfig> config =
+        terminusConfig(devs[0], devs, "HGX_");
     ASSERT_TRUE(config);
-    EXPECT_EQ("ProcessorModule_0", config->name);
     EXPECT_EQ(65535, config->instance);
-    EXPECT_EQ(65535, config->cpuIndex);
 
-    dev.instance = 65536;
-    EXPECT_FALSE(terminusConfig(dev, prefix));
-
-    dev.instance = 0;
-    dev.cpuIndex = 65536;
-    EXPECT_FALSE(terminusConfig(dev, prefix));
-
-    dev.cpuIndex = 0;
-    dev.kind = "gpu";
-    EXPECT_FALSE(terminusConfig(dev, prefix));
+    devs[0].instance = 65536;
+    EXPECT_FALSE(terminusConfig(devs[0], devs, "HGX_"));
 }
 
 TEST(EmDevicePldmDevice, readsTheRecordThroughTheGivenBus)

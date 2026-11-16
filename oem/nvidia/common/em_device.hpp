@@ -73,7 +73,6 @@ struct Device
     std::string parentChassis;
     std::optional<uint64_t> eid;
     std::optional<uint64_t> instance;
-    std::optional<uint64_t> cpuIndex;
     // from the .Transport child interface
     std::string medium;
 };
@@ -123,12 +122,12 @@ std::map<std::string, std::string> objectsWith(
 /** @brief The devices of the platform topology.
  *
  *  A device is published twice: by the topology (Name, Kind, Instance, EID,
- *  ParentChassis, CpuIndex and a Transport child interface) and by the entity
+ *  ParentChassis and a Transport child interface) and by the entity
  *  file of its kind, a record of the same Type that carries InstanceNumber in
  *  place of Instance and no parent. The two are merged by Name; a value the
  *  first one lacks is taken from the second, and a value both carry with a
  *  different content is logged with both values and record paths and kept
- *  from the first. An EID, Instance, InstanceNumber or CpuIndex that is
+ *  from the first. An EID, Instance or InstanceNumber that is
  *  not a non-negative integer in range is logged with its value and record
  *  path and treated as absent.
  */
@@ -190,12 +189,8 @@ std::optional<PldmDevice> pldmDevice(
 /** @brief @p name without the platform name prefix @p prefix. */
 std::string baseName(const std::string& name, const std::string& prefix);
 
-/** @brief The terminus config of a CPU device: the terminus name is the
- *         parent chassis without the platform name prefix, the entity
- *         instance is the device instance, and the CPU index of the sensor
- *         name prefix is CpuIndex of the device, default 0. Both are
- *         uint16_t on the terminus; a device whose values do not fit has
- *         no config. */
+/** @brief The terminus name, entity instance and CPU index of a CPU
+ *         terminus. */
 struct TerminusConfig
 {
     std::string name;
@@ -203,7 +198,25 @@ struct TerminusConfig
     uint16_t cpuIndex = 0;
 };
 
+/** @brief The terminus config of a CPU device, from the hardware facts of
+ *         the platform topology.
+ *
+ *  - The terminus name is the leaf of the device's ParentChassis (which may
+ *    carry a type prefix, "board/HGX_ProcessorModule_0") without the
+ *    platform name prefix.
+ *  - The entity instance is the device's Instance.
+ *  - The CPU index of the sensor name prefix is the position of the device
+ *    among the CPU devices of @p devices on the same module (the same
+ *    ParentChassis leaf, with or without a type prefix), ordered by
+ *    Instance, then by Name.
+ *
+ *  A device that is no CPU has no config. A CPU whose ParentChassis is empty,
+ *  lacks the platform prefix or is only the prefix has no config either, and
+ *  is logged once. The instance and the CPU index are uint16_t on the
+ *  terminus; a device whose values do not fit has no config.
+ */
 std::optional<TerminusConfig> terminusConfig(const Device& dev,
+                                             const std::vector<Device>& devices,
                                              const std::string& prefix);
 
 } // namespace pldm::em_device

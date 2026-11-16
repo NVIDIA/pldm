@@ -752,8 +752,9 @@ TEST_F(TerminusManagerPrivateTest,
     using ::testing::_;
     using ::testing::Invoke;
 
-    // Topology item and entity-file record of the same CPU device, a GPU that
-    // gets no terminus config, and the DevicePrefix record of the platform.
+    // Topology item and entity-file record of the same CPU device, a second
+    // CPU of its module, a GPU of that module that gets no terminus config
+    // and is no CPU to count, and the DevicePrefix record of the platform.
     const std::string topo0 = "/inventory/platform/HGX_CPU_0";
     const std::string entity0 = "/inventory/board/HGX_IRoT_CPU_0";
     const std::string topo1 = "/inventory/platform/HGX_CPU_1";
@@ -775,9 +776,8 @@ TEST_F(TerminusManagerPrivateTest,
          {{"Name", std::string("HGX_CPU_1")},
           {"Kind", std::string("cpu")},
           {"Instance", uint64_t{1}},
-          {"CpuIndex", uint64_t{3}},
           {"EID", uint64_t{24}},
-          {"ParentChassis", std::string("HGX_ProcessorModule_1")}}},
+          {"ParentChassis", std::string("HGX_ProcessorModule_0")}}},
         {gpu + "|" + nvDeviceIntf,
          {{"Name", std::string("HGX_GPU_0")},
           {"Kind", std::string("gpu")},
@@ -815,8 +815,8 @@ TEST_F(TerminusManagerPrivateTest,
     }
     const auto& c1 = terminusManager.eidToTerminusConfigMap.at(24);
     EXPECT_EQ(1, std::get<0>(c1));
-    EXPECT_EQ("ProcessorModule_1", std::get<1>(c1));
-    EXPECT_EQ(std::optional<uint16_t>(3), std::get<2>(c1));
+    EXPECT_EQ("ProcessorModule_0", std::get<1>(c1));
+    EXPECT_EQ(std::optional<uint16_t>(1), std::get<2>(c1));
 }
 
 namespace

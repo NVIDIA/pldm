@@ -281,11 +281,18 @@ void readNvDeviceConfigs(const NameToEids& nameToEids,
                          ResolvedConfigs& resolved)
 {
     const auto prefix = pldm::em_device::platformPrefix(dbusHandler);
-    for (const auto& dev : pldm::em_device::devices(dbusHandler))
+    const std::vector<pldm::em_device::Device> devices =
+        pldm::em_device::devices(dbusHandler);
+    for (const auto& dev : devices)
     {
         auto eidIt = nameToEids.find(dev.name);
-        auto config = pldm::em_device::terminusConfig(dev, prefix);
-        if (eidIt == nameToEids.end() || !config || config->name.empty())
+        if (eidIt == nameToEids.end())
+        {
+            continue;
+        }
+        const std::optional<pldm::em_device::TerminusConfig> config =
+            pldm::em_device::terminusConfig(dev, devices, prefix);
+        if (!config)
         {
             continue;
         }

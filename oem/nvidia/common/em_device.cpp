@@ -225,7 +225,6 @@ Device readDevice(const pldm::utils::PropertyMap& props,
         dev.instance =
             readNumber(props, "InstanceNumber", noMax, dev.name, path);
     }
-    dev.cpuIndex = readNumber(props, "CpuIndex", noMax, dev.name, path);
     readTransport(dev, service, path, bus);
     return dev;
 }
@@ -239,7 +238,6 @@ void mergeDevice(Device& known, Device&& other, const MergeSource& src)
           "ParentChassis");
     merge(known.eid, other.eid, src, "EID");
     merge(known.instance, other.instance, src, "Instance");
-    merge(known.cpuIndex, other.cpuIndex, src, "CpuIndex");
     merge(known.medium, std::move(other.medium), src, "Medium");
 }
 
@@ -478,24 +476,76 @@ std::string baseName(const std::string& name, const std::string& prefix)
     return name;
 }
 
+namespace
+{
+
+/** @brief Log once per device that the CPU @p dev has no terminus name; the
+ *         devices are read again on every terminus config reload. */
+void warnNoTerminusName(const Device& dev, const std::string& prefix)
+{
+    static std::set<std::string> logged;
+    if (logged.insert(dev.name).second)
+    {
+        lg2::warning("CPU NvDevice {NAME} has no terminus name: its "
+                     "ParentChassis '{PARENT}' is empty, lacks the platform "
+                     "prefix '{PREFIX}' or is only the prefix; it gives no "
+                     "terminus config",
+                     "NAME", dev.name, "PARENT", dev.parentChassis, "PREFIX",
+                     prefix);
+    }
+}
+
+/** @brief The leaf of the ParentChassis of @p dev; ParentChassis may carry a
+ *         type prefix ("board/HGX_ProcessorModule_0"). */
+std::string_view parentLeaf(const Device& dev)
+{
+    const std::string_view parent = dev.parentChassis;
+    return parent.substr(parent.rfind('/') + 1);
+}
+
+/** @brief The position of the CPU @p dev among the CPUs of @p devices on the
+ *         same module (ParentChassis leaf), ordered by Instance, then by
+ *         Name. */
+size_t cpuPosition(const Device& dev, const std::vector<Device>& devices)
+{
+    auto key = [](const Device& d) {
+        return std::pair{d.instance.value_or(0), std::string_view(d.name)};
+    };
+    return static_cast<size_t>(
+        std::ranges::count_if(devices, [&](const Device& other) {
+            return other.kind == "cpu" &&
+                   parentLeaf(other) == parentLeaf(dev) &&
+                   key(other) < key(dev);
+        }));
+}
+
+} // namespace
+
 std::optional<TerminusConfig> terminusConfig(const Device& dev,
+                                             const std::vector<Device>& devices,
                                              const std::string& prefix)
 {
     constexpr uint64_t max = std::numeric_limits<uint16_t>::max();
-    if (dev.kind != "cpu" || dev.cpuIndex.value_or(0) > max ||
-        dev.instance.value_or(0) > max)
+    if (dev.kind != "cpu")
+    {
+        return std::nullopt;
+    }
+    // the terminus name is the module, minus the platform prefix
+    const std::string_view leaf = parentLeaf(dev);
+    if (!leaf.starts_with(prefix) || leaf.size() == prefix.size())
+    {
+        warnNoTerminusName(dev, prefix);
+        return std::nullopt;
+    }
+    const size_t cpuIndex = cpuPosition(dev, devices);
+    if (dev.instance.value_or(0) > max || cpuIndex > max)
     {
         return std::nullopt;
     }
     TerminusConfig config;
-    // ParentChassis may carry a type prefix ("board/HGX_ProcessorModule_0");
-    // the terminus name is its leaf, minus the platform prefix.
-    const auto& parent = dev.parentChassis;
-    config.name = baseName(
-        parent.empty() ? dev.name : parent.substr(parent.rfind('/') + 1),
-        prefix);
+    config.name = leaf.substr(prefix.size());
     config.instance = static_cast<int>(dev.instance.value_or(0));
-    config.cpuIndex = static_cast<uint16_t>(dev.cpuIndex.value_or(0));
+    config.cpuIndex = static_cast<uint16_t>(cpuIndex);
     return config;
 }
 
