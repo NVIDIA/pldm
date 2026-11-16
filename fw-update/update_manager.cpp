@@ -200,16 +200,18 @@ static std::optional<std::set<mctp_eid_t>> pldmCapableMctpEids()
         {
             try
             {
-                auto props = pldm::utils::DBusHandler().getDbusPropertiesVariant(
-                    serviceMap.begin()->first.c_str(), objPath.c_str(),
-                    endpointIntf);
+                auto props =
+                    pldm::utils::DBusHandler().getDbusPropertiesVariant(
+                        serviceMap.begin()->first.c_str(), objPath.c_str(),
+                        endpointIntf);
                 if (auto it = props.find("SupportedMessageTypes");
                     it != props.end())
                 {
                     if (const auto* types =
                             std::get_if<std::vector<uint8_t>>(&it->second))
                     {
-                        speaksPldm = std::ranges::find(*types, 1) != types->end();
+                        speaksPldm = std::ranges::find(*types, 1) !=
+                                     types->end();
                     }
                 }
             }
@@ -340,7 +342,8 @@ static void seedRefreshEidsFromStaticConfig(std::set<mctp_eid_t>& refreshEidSet,
                 std::set<mctp_eid_t> ignored;
                 if (auto it = props.find("IgnoreEIDs"); it != props.end())
                 {
-                    if (const auto* list = std::get_if<std::string>(&it->second))
+                    if (const auto* list =
+                            std::get_if<std::string>(&it->second))
                     {
                         ignored = parseEidList(*list);
                     }

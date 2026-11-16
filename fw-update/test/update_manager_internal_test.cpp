@@ -411,7 +411,8 @@ TEST_F(UpdateManagerInternalTest, seedRefreshSkipsTopologyDevicesIgnoringPldm)
 }
 #endif
 
-TEST_F(UpdateManagerInternalTest, seedRefreshKeepsOnlyEidsMctpdEnumeratedForPldm)
+TEST_F(UpdateManagerInternalTest,
+       seedRefreshKeepsOnlyEidsMctpdEnumeratedForPldm)
 {
     constexpr auto endpointIntf = "xyz.openbmc_project.MCTP.Endpoint";
     const auto endpoint = [](unsigned eid) {

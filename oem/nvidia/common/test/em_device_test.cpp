@@ -101,16 +101,14 @@ TEST_F(EmDeviceDevices, mergesTheTwoRecordsOfADevice)
                {"Instance", uint64_t{0}},
                {"EID", uint64_t{14}},
                {"ParentChassis", std::string("HGX_ProcessorModule_0")}}},
-             {topo + "|" + transportIntf,
-              {{"Medium", std::string("usb")}}},
+             {topo + "|" + transportIntf, {{"Medium", std::string("usb")}}},
              {entity + "|" + nvDeviceIntf,
               {{"Name", std::string("HGX_CPU_0")},
                {"Kind", std::string("cpu")},
                {"InstanceNumber", uint64_t{0}},
                {"CpuIndex", uint64_t{2}},
                {"EID", uint64_t{14}}}},
-             {entity + "|" + transportIntf,
-              {{"Medium", std::string("i2c")}}}});
+             {entity + "|" + transportIntf, {{"Medium", std::string("i2c")}}}});
 
     auto out = devices(dbus);
     ASSERT_EQ(1U, out.size());
@@ -297,8 +295,7 @@ TEST_F(EmDeviceDevices, dropsAValueOfAnArrayType)
                {"EID", std::vector<uint8_t>{0x10}},
                {"Instance", std::vector<std::string>{"1"}},
                {"CpuIndex", uint64_t{4}}}},
-             {bytes + "|" + transportIntf,
-              {{"Medium", std::string("spi")}}},
+             {bytes + "|" + transportIntf, {{"Medium", std::string("spi")}}},
              {strings + "|" + nvDeviceIntf,
               {{"Name", std::string("HGX_FPGA_1")},
                {"EID", uint64_t{0x11}},
@@ -377,11 +374,12 @@ TEST_F(EmDeviceDevices, readsTheTransportMedium)
 {
     const std::string spi = "/inventory/platform/HGX_FPGA_0";
     const std::string bare = "/inventory/platform/HGX_GPU_0";
-    publish({spi, bare},
-            {{spi + "|" + nvDeviceIntf, {{"Name", std::string("HGX_FPGA_0")}}},
-             {spi + "|" + transportIntf, {{"Medium", std::string("spi")}}},
-             // no .Transport child interface
-             {bare + "|" + nvDeviceIntf, {{"Name", std::string("HGX_GPU_0")}}}});
+    publish(
+        {spi, bare},
+        {{spi + "|" + nvDeviceIntf, {{"Name", std::string("HGX_FPGA_0")}}},
+         {spi + "|" + transportIntf, {{"Medium", std::string("spi")}}},
+         // no .Transport child interface
+         {bare + "|" + nvDeviceIntf, {{"Name", std::string("HGX_GPU_0")}}}});
 
     auto out = devices(dbus);
     ASSERT_EQ(2U, out.size());
