@@ -496,6 +496,57 @@ TEST_F(TerminusInventoryTest, loadDeviceRecordPortsWithoutANetworkAdapter)
     EXPECT_EQ(rootPath + "/Ports/Port_0", associations[0].path);
 }
 
+TEST_F(TerminusInventoryTest, loadDeviceRecordPlacesSensorsByThePlatformPolicy)
+{
+    std::string uuid("00000000-0000-0000-0000-00000000021F");
+    Terminus terminus(0x7A, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    const std::string rootPath =
+        "/xyz/openbmc_project/inventory/system/chassis/HGX_ConnectX_0";
+    const std::string plugParent =
+        "/xyz/openbmc_project/inventory/system/chassis/HGX_OSFP_Board_0";
+
+    pldm::em_device::PldmDevice record;
+    record.networkAdapter = "ConnectX_NIC_0";
+    record.ports = {{200, "Port_0"}};
+    record.auxNames = {
+        {5, "HGX_ConnectX_0"},           {200, "Port_0"},
+        {300, "HGX_ConnectX_0_Temp_0"},  {400, "CX_NIC_0_Port_0_Voltage_0"},
+        {500, "CX_NIC_0_Port_0_Temp_0"}, {700, "CX_NIC_0_Port_0_Plug"}};
+    auto parentOf = [&terminus](uint16_t id) {
+        return std::get<1>(terminus.sensorAuxNameOverwriteTbl.at(id));
+    };
+
+    // Without a policy every sensor belongs to the chassis of the device.
+    terminus.loadDeviceRecord(record, rootPath);
+    for (uint16_t id : {5, 200, 300, 400, 500, 700})
+    {
+        EXPECT_EQ(rootPath, parentOf(id)) << id;
+    }
+
+    // The link state of a port moves to the network adapter.
+    record.linkStateOnNetworkAdapter = true;
+    terminus.loadDeviceRecord(record, rootPath);
+    EXPECT_EQ(rootPath + "/NetworkAdapters/ConnectX_NIC_0", parentOf(200));
+    EXPECT_EQ(rootPath, parentOf(500));
+
+    // Without a network adapter it has nowhere to go.
+    record.networkAdapter.clear();
+    terminus.loadDeviceRecord(record, rootPath);
+    EXPECT_EQ(rootPath, parentOf(200));
+
+    // The plug and cable sensors of a port move to the PlugParent; the
+    // other sensors of the port, and those of the device, stay.
+    record.plugParentPath = plugParent;
+    terminus.loadDeviceRecord(record, rootPath);
+    EXPECT_EQ(plugParent, parentOf(500));
+    EXPECT_EQ(plugParent, parentOf(700));
+    for (uint16_t id : {5, 200, 300, 400})
+    {
+        EXPECT_EQ(rootPath, parentOf(id)) << id;
+    }
+}
+
 constexpr auto platformPath = "/xyz/openbmc_project/inventory/system/platform/";
 constexpr auto sensorAuxNameIntf =
     "xyz.openbmc_project.Configuration.SensorAuxName";

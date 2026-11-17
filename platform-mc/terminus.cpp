@@ -388,12 +388,45 @@ exec::task<void> Terminus::loadDeviceConfigs(const pldm::em_device::Device& dev,
 void Terminus::loadDeviceRecord(const pldm::em_device::PldmDevice& record,
                                 const std::string& objPath)
 {
+    // Whether a sensor name is that of a plug or cable sensor of a port:
+    // "<...>_Port_<n>_Temp_0" (the temperature of the module) or
+    // "<...>_Port_<n>_Plug" (its presence).
+    auto isPortPlugSensorName = [](std::string_view name) {
+        constexpr std::string_view marker = "_Port_";
+        const size_t at = name.rfind(marker);
+        if (at == std::string_view::npos)
+        {
+            return false;
+        }
+        std::string_view rest = name.substr(at + marker.size());
+        const size_t digits = rest.find_first_not_of("0123456789");
+        if (digits == 0 || digits == std::string_view::npos)
+        {
+            return false;
+        }
+        rest.remove_prefix(digits);
+        return rest == "_Temp_0" || rest == "_Plug";
+    };
     for (const auto& [sensorId, name] : record.auxNames)
     {
         AuxiliaryNames auxNameTbl;
         auxNameTbl.push_back({{"en", name}});
+        // A sensor belongs to the device's chassis unless the platform
+        // policy places it elsewhere: the link state of a port on the
+        // network adapter, the plug and cable sensors of a port on the
+        // PlugParent object.
+        std::string parent = objPath;
+        if (record.linkStateOnNetworkAdapter &&
+            !record.networkAdapter.empty() && record.ports.contains(sensorId))
+        {
+            parent = objPath + "/NetworkAdapters/" + record.networkAdapter;
+        }
+        else if (!record.plugParentPath.empty() && isPortPlugSensorName(name))
+        {
+            parent = record.plugParentPath;
+        }
         sensorAuxNameOverwriteTbl[sensorId] =
-            std::make_tuple(auxNameTbl, objPath);
+            std::make_tuple(auxNameTbl, std::move(parent));
     }
     for (const auto& [sensorId, port] : record.ports)
     {

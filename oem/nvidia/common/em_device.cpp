@@ -444,6 +444,105 @@ std::map<std::string, std::string> sensorRoleMap(
     return out;
 }
 
+/** @brief The inventory path of the object named @p name in any category of
+ *         the system inventory (isSystemObjectNamed()); empty when there is
+ *         none. */
+std::string inventoryObjectNamed(const std::string& name,
+                                 const pldm::utils::DBusHandlerInterface& bus)
+{
+    try
+    {
+        for (const auto& [path, serviceMap] : bus.getSubtree(
+                 inventoryRoot, 0, {"xyz.openbmc_project.Inventory.Item"}))
+        {
+            if (isSystemObjectNamed(path, name))
+            {
+                return path;
+            }
+        }
+    }
+    catch (const std::exception& e)
+    {
+        lg2::warning("GetSubTree for the object {NAME} failed: {ERROR}", "NAME",
+                     name, "ERROR", e);
+    }
+    return {};
+}
+
+/** @brief Fill the PLDM_Policy fields of @p out, the record of the device
+ *         @p deviceName. A policy of the device's kind that names the device
+ *         in Devices is applied after one that names none. */
+void applyPolicy(PldmDevice& out, const std::string& deviceName,
+                 const pldm::utils::DBusHandlerInterface& bus)
+{
+    const auto policies = objectsWith(pldmPolicyIntf, bus);
+    if (policies.empty())
+    {
+        return;
+    }
+    const auto dev = deviceByName(deviceName, bus);
+    if (!dev)
+    {
+        return;
+    }
+    // the policies of the kind: those for every device, then those that
+    // name this one
+    std::vector<pldm::utils::PropertyMap> general;
+    std::vector<pldm::utils::PropertyMap> named;
+    for (const auto& [path, service] : policies)
+    {
+        auto props = getAll(service, path, pldmPolicyIntf, bus);
+        if (!props || stringProp(*props, "Kind") != dev->kind)
+        {
+            continue;
+        }
+        std::vector<std::string> devices;
+        if (auto it = props->find("Devices"); it != props->end())
+        {
+            if (const auto* list =
+                    std::get_if<std::vector<std::string>>(&it->second))
+            {
+                devices = *list;
+            }
+        }
+        if (devices.empty())
+        {
+            general.push_back(std::move(*props));
+        }
+        else if (std::ranges::find(devices, deviceName) != devices.end())
+        {
+            named.push_back(std::move(*props));
+        }
+    }
+    for (const auto* group : {&general, &named})
+    {
+        for (const auto& props : *group)
+        {
+            if (auto it = props.find("LinkStateOnNetworkAdapter");
+                it != props.end())
+            {
+                if (const auto* flag = std::get_if<bool>(&it->second))
+                {
+                    out.linkStateOnNetworkAdapter = *flag;
+                }
+            }
+            if (const std::string parent = stringProp(props, "PlugParent");
+                !parent.empty())
+            {
+                out.plugParentPath = inventoryObjectNamed(parent, bus);
+                if (out.plugParentPath.empty())
+                {
+                    lg2::warning(
+                        "PLDM_Policy PlugParent {PARENT} of {NAME} names no "
+                        "inventory object; the plug sensors keep the device "
+                        "chassis",
+                        "PARENT", parent, "NAME", deviceName);
+                }
+            }
+        }
+    }
+}
+
 } // namespace
 
 std::optional<PldmDevice> pldmDevice(
@@ -476,6 +575,7 @@ std::optional<PldmDevice> pldmDevice(
         out.networkAdapter = stringProp(*props, "NetworkAdapter");
         out.portMaxSpeed = pldm::utils::numberProp(*props, "PortMaxSpeedMBps");
         out.firmwareName = stringProp(*props, "FirmwareName");
+        applyPolicy(out, deviceName, bus);
         return out;
     }
     return std::nullopt;

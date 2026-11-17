@@ -785,3 +785,126 @@ TEST_F(EmDeviceSensorRoles, ignoresAnUnknownRole)
                   {primaryTemperatureSensor, "TempLimit_0"}}),
               record->sensorRoles);
 }
+
+using EmDevicePolicy = EmDeviceDevices;
+
+namespace
+{
+
+const std::string osfpBoard =
+    "/xyz/openbmc_project/inventory/system/chassis/HGX_OSFP_Board_0";
+
+/** @brief The properties of the topology records of the ConnectX devices
+ *         HGX_ConnectX_0 and HGX_ConnectX_1 and of their PLDMDevice records,
+ *         with the PLDM_Policy records @p policies at /inventory/policy/<n>.
+ */
+std::map<std::string, PropertyMap> cx9WithPolicies(
+    const std::vector<PropertyMap>& policies)
+{
+    std::map<std::string, PropertyMap> props;
+    for (const auto* name : {"HGX_ConnectX_0", "HGX_ConnectX_1"})
+    {
+        const std::string topo = std::string("/inventory/platform/") + name;
+        props[topo + "|" + nvDeviceIntf] = {{"Name", std::string(name)},
+                                            {"Kind", std::string("cx9_io")}};
+        props[topo + "_PLDM|" + pldmDeviceIntf] = {
+            {"Name", std::string(name) + "_PLDM"}};
+    }
+    for (size_t i = 0; i < policies.size(); ++i)
+    {
+        props["/inventory/policy/" + std::to_string(i) + "|" + pldmPolicyIntf] =
+            policies[i];
+    }
+    return props;
+}
+
+std::map<std::string, std::vector<std::string>> cx9Records(size_t policies)
+{
+    std::vector<std::string> policyPaths;
+    for (size_t i = 0; i < policies; ++i)
+    {
+        policyPaths.push_back("/inventory/policy/" + std::to_string(i));
+    }
+    return {{pldmDeviceIntf,
+             {"/inventory/platform/HGX_ConnectX_0_PLDM",
+              "/inventory/platform/HGX_ConnectX_1_PLDM"}},
+            {pldmPolicyIntf, policyPaths},
+            {"xyz.openbmc_project.Inventory.Item", {osfpBoard}}};
+}
+
+} // namespace
+
+TEST_F(EmDevicePolicy, hasNoPolicyWithoutARecord)
+{
+    publish({"/inventory/platform/HGX_ConnectX_0",
+             "/inventory/platform/HGX_ConnectX_1"},
+            cx9WithPolicies({}), cx9Records(0));
+
+    auto record = pldmDevice("HGX_ConnectX_0", dbus);
+    ASSERT_TRUE(record);
+    EXPECT_FALSE(record->linkStateOnNetworkAdapter);
+    EXPECT_TRUE(record->plugParentPath.empty());
+}
+
+TEST_F(EmDevicePolicy, appliesThePolicyOfTheKindToEveryDevice)
+{
+    publish({"/inventory/platform/HGX_ConnectX_0",
+             "/inventory/platform/HGX_ConnectX_1"},
+            cx9WithPolicies({{{"Kind", std::string("cx9_io")},
+                              {"Devices", std::vector<std::string>{}},
+                              {"LinkStateOnNetworkAdapter", true},
+                              {"PlugParent", std::string("HGX_OSFP_Board_0")}},
+                             // another kind
+                             {{"Kind", std::string("gpu")},
+                              {"LinkStateOnNetworkAdapter", false},
+                              {"PlugParent", std::string("HGX_GPU_0")}}}),
+            cx9Records(2));
+
+    for (const auto* name : {"HGX_ConnectX_0", "HGX_ConnectX_1"})
+    {
+        auto record = pldmDevice(name, dbus);
+        ASSERT_TRUE(record) << name;
+        EXPECT_TRUE(record->linkStateOnNetworkAdapter) << name;
+        EXPECT_EQ(osfpBoard, record->plugParentPath) << name;
+    }
+}
+
+TEST_F(EmDevicePolicy, aPolicyThatNamesTheDeviceWinsOverOneForTheKind)
+{
+    publish({"/inventory/platform/HGX_ConnectX_0",
+             "/inventory/platform/HGX_ConnectX_1"},
+            cx9WithPolicies(
+                {// listed first, so the order of the records is not what
+                 // decides
+                 {{"Kind", std::string("cx9_io")},
+                  {"Devices", std::vector<std::string>{"HGX_ConnectX_0"}},
+                  {"LinkStateOnNetworkAdapter", false}},
+                 {{"Kind", std::string("cx9_io")},
+                  {"Devices", std::vector<std::string>{}},
+                  {"LinkStateOnNetworkAdapter", true},
+                  {"PlugParent", std::string("HGX_OSFP_Board_0")}}}),
+            cx9Records(2));
+
+    auto named = pldmDevice("HGX_ConnectX_0", dbus);
+    ASSERT_TRUE(named);
+    EXPECT_FALSE(named->linkStateOnNetworkAdapter);
+    // what the named policy leaves unset comes from the one for the kind
+    EXPECT_EQ(osfpBoard, named->plugParentPath);
+
+    auto other = pldmDevice("HGX_ConnectX_1", dbus);
+    ASSERT_TRUE(other);
+    EXPECT_TRUE(other->linkStateOnNetworkAdapter);
+}
+
+TEST_F(EmDevicePolicy, aPlugParentWithoutAnObjectIsDropped)
+{
+    publish({"/inventory/platform/HGX_ConnectX_0",
+             "/inventory/platform/HGX_ConnectX_1"},
+            cx9WithPolicies({{{"Kind", std::string("cx9_io")},
+                              {"PlugParent", std::string("No_Such_Board")}}}),
+            cx9Records(1));
+
+    auto record = pldmDevice("HGX_ConnectX_0", dbus);
+    ASSERT_TRUE(record);
+    EXPECT_TRUE(record->plugParentPath.empty());
+}

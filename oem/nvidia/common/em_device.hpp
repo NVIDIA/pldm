@@ -46,6 +46,7 @@ constexpr auto nvDeviceIntf = "xyz.openbmc_project.Configuration.NvDevice";
 constexpr auto transportIntf =
     "xyz.openbmc_project.Configuration.NvDevice.Transport";
 constexpr auto pldmDeviceIntf = "xyz.openbmc_project.Configuration.PLDMDevice";
+constexpr auto pldmPolicyIntf = "xyz.openbmc_project.Configuration.PLDM_Policy";
 constexpr auto devicePrefixIntf =
     "xyz.openbmc_project.Configuration.DevicePrefix";
 constexpr auto topChassisIntf = "xyz.openbmc_project.Configuration.TopChassis";
@@ -102,6 +103,14 @@ struct PldmDevice
     // role (primaryTemperatureSensor, ...) -> name of the sensor or
     // effecter that has it
     std::map<std::string, std::string> sensorRoles;
+    // from the PLDM_Policy record of the device's kind: bind the link state
+    // sensors of the ports to the network adapter object, not to the chassis
+    bool linkStateOnNetworkAdapter = false;
+    // from the PLDM_Policy record of the device's kind: inventory path of
+    // the object the plug and cable sensors of the ports are associated
+    // with, instead of the chassis of the device; empty without a PlugParent
+    // or when no object of that name exists
+    std::string plugParentPath;
 };
 
 /** @brief The string property @p key of @p props; empty when it is absent
@@ -189,7 +198,12 @@ std::map<uint16_t, std::string> nameIdMap(
  *
  *  A SensorRoles entry of a role this reader does not know is left out
  *  with a debug log; one whose value is not a non-empty string is logged
- *  with its value and left out. */
+ *  with its value and left out.
+ *
+ *  The PLDM_Policy records of the platform whose Kind is the kind of the
+ *  device give linkStateOnNetworkAdapter and plugParentPath. A record that
+ *  lists the device in Devices wins over one with an empty Devices, which
+ *  selects every device of the kind. */
 std::optional<PldmDevice> pldmDevice(
     const std::string& deviceName,
     const pldm::utils::DBusHandlerInterface& bus = pldm::utils::DBusHandler());
