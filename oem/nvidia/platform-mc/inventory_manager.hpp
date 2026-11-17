@@ -287,6 +287,32 @@ class InventoryManager
         const Inventory& inventory, std::vector<Inventory>& inventories,
         ParentMap& parents);
 
+    /** @brief (forward, reverse, endpoint) associations. */
+    using AssociationList =
+        std::vector<std::tuple<std::string, std::string, std::string>>;
+
+    /** @brief The Associations of the Association.Definitions of @a path;
+     *         none when it has none or they cannot be read (the D-Bus
+     *         helpers log the error and return no value). */
+    static exec::task<AssociationList> definedAssociations(
+        const std::string& path);
+
+    /** @brief Whether the Cpu object @a path belongs to the device
+     *         @a deviceName: its chassis association (EM's relation from a
+     *         Cpu record to the chassis of the processor) names the device's
+     *         own object (em_device::isSystemObjectNamed()). A Cpu without
+     *         readable associations belongs to no device. */
+    static exec::task<bool> isCpuOfDevice(const std::string& path,
+                                          const std::string& deviceName);
+
+    /** @brief Add to @a paths the Cpu objects of @a subtree that belong to
+     *         the device @a deviceName (isCpuOfDevice()) and are not in it
+     *         yet. Its own objects and ParentChassis name no Cpu object of
+     *         an HMC CPU (cpu/CPU_n of device HGX_CPU_n). */
+    static exec::task<void> addCpusOfDevice(
+        const utils::GetSubTreeResponse& subtree, const std::string& deviceName,
+        std::vector<std::string>& paths);
+
     std::map<tid_t, TerminusData> terminusData;
 };
 

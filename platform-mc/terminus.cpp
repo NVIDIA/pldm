@@ -329,16 +329,18 @@ std::optional<Terminus::DeviceInventory> Terminus::findDeviceInventory(
         std::ranges::copy_if(paths, std::back_inserter(found), isObject);
         return found;
     };
-    std::vector<std::string> own = withPaths([&dev](const std::string& path) {
+    const auto isOwn = [&dev](const std::string& path) {
         return pldm::em_device::isSystemObjectNamed(path, dev->name);
-    });
-    if (own.empty())
-    {
-        own = withPaths([&dev](const std::string& path) {
-            return pldm::em_device::isParentChassisObject(path,
-                                                          dev->parentChassis);
-        });
-    }
+    };
+    // The objects named after the device, then the object of its
+    // ParentChassis unless it is one of them.
+    std::vector<std::string> own = withPaths(isOwn);
+    std::ranges::copy(withPaths([&dev, &isOwn](const std::string& path) {
+                          return !isOwn(path) &&
+                                 pldm::em_device::isParentChassisObject(
+                                     path, dev->parentChassis);
+                      }),
+                      std::back_inserter(own));
     if (own.empty())
     {
         if (!deviceInventoryWarned)

@@ -356,9 +356,9 @@ class Terminus
     /** @brief Find the NvDevice of this terminus (the device of its
      *         endpoint, by name, else by EID) and the inventory objects
      *         among @p paths that belong to it: the objects named after the
-     *         NvDevice, in any category of the system inventory, else the
+     *         NvDevice, in any category of the system inventory, and the
      *         object of its ParentChassis
-     *         (em_device::isParentChassisObject()).
+     *         (em_device::isParentChassisObject()), in that order.
      *
      *  Sets deviceName to the NvDevice, empty without one. None, so no
      *  device inventory, without an NvDevice or without an object of it

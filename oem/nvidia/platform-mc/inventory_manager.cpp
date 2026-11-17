@@ -8,6 +8,7 @@
 #include "libpldm/platform.h"
 
 #include "common/dBusAsyncUtils.hpp"
+#include "oem/nvidia/common/em_device.hpp"
 #include "platform-mc/terminus.hpp"
 
 #include <phosphor-logging/lg2.hpp>
@@ -200,6 +201,61 @@ exec::task<void> InventoryManager::collectInterface(
     }
 }
 
+exec::task<InventoryManager::AssociationList>
+    InventoryManager::definedAssociations(const std::string& path)
+{
+    constexpr const char* definitionsInterface =
+        "xyz.openbmc_project.Association.Definitions";
+    const utils::MapperServiceMap services =
+        co_await utils::coGetServiceMap(path, {definitionsInterface});
+    if (services.empty())
+    {
+        co_return AssociationList{};
+    }
+    co_return co_await utils::coGetDbusProperty<AssociationList>(
+        path, "Associations", definitionsInterface, services.begin()->first);
+}
+
+exec::task<bool> InventoryManager::isCpuOfDevice(const std::string& path,
+                                                 const std::string& deviceName)
+{
+    const AssociationList associations = co_await definedAssociations(path);
+    co_return std::ranges::any_of(
+        associations, [&deviceName](const auto& association) {
+            const auto& [forward, reverse, endpoint] = association;
+            return forward == "chassis" &&
+                   pldm::em_device::isSystemObjectNamed(endpoint, deviceName);
+        });
+}
+
+exec::task<void> InventoryManager::addCpusOfDevice(
+    const utils::GetSubTreeResponse& subtree, const std::string& deviceName,
+    std::vector<std::string>& paths)
+{
+    constexpr std::string_view cpuInterface =
+        "xyz.openbmc_project.Inventory.Item.Cpu";
+    for (const auto& [path, services] : subtree)
+    {
+        const bool isCpu =
+            std::ranges::any_of(services, [cpuInterface](const auto& service) {
+                return std::ranges::contains(service.second, cpuInterface);
+            });
+        if (isCpu && !std::ranges::contains(paths, path) &&
+            co_await isCpuOfDevice(path, deviceName))
+        {
+            paths.push_back(path);
+        }
+    }
+}
+
+/** @brief Whether @a inventories has the object @a path. */
+static inline bool hasInventory(
+    const std::vector<InventoryManager::Inventory>& inventories,
+    const std::string& path)
+{
+    return std::ranges::contains(inventories | std::views::keys, path);
+}
+
 exec::task<void> InventoryManager::collectProcessors(
     const Inventory& inventory, std::vector<Inventory>& inventories,
     ParentMap& parents)
@@ -207,19 +263,11 @@ exec::task<void> InventoryManager::collectProcessors(
     const auto& [path, type, instance] = inventory;
     try
     {
-        auto services = co_await utils::coGetServiceMap(
-            path, {"xyz.openbmc_project.Association.Definitions"});
-        if (services.empty())
-        {
-            co_return;
-        }
-        const auto associations = co_await utils::coGetDbusProperty<
-            std::vector<std::tuple<std::string, std::string, std::string>>>(
-            path, "Associations", "xyz.openbmc_project.Association.Definitions",
-            services.begin()->first);
+        const AssociationList associations = co_await definedAssociations(path);
         for (const auto& [forward, reverse, endpoint] : associations)
         {
-            if (!isLinkedProcessor(reverse, endpoint, path))
+            if (!isLinkedProcessor(reverse, endpoint, path) ||
+                hasInventory(inventories, endpoint))
             {
                 continue;
             }
@@ -245,10 +293,12 @@ exec::task<int> InventoryManager::scan(Terminus& terminus)
             "/xyz/openbmc_project/inventory", 0, interestingInterfaces());
         const std::vector<std::string> paths =
             subtree | std::views::keys | std::ranges::to<std::vector>();
-        const std::optional<Terminus::DeviceInventory> device =
+        std::optional<Terminus::DeviceInventory> device =
             terminus.findDeviceInventory(paths);
         if (device)
         {
+            co_await addCpusOfDevice(subtree, device->device.name,
+                                     device->paths);
             // The configs of the device hang off its first object.
             co_await terminus.loadDeviceConfigs(device->device,
                                                 device->paths.front());

@@ -39,8 +39,10 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <format>
 #include <map>
 #include <memory>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -698,11 +700,11 @@ TEST_F(TerminusInventoryTest, loadDeviceConfigsOfADeviceWithoutARecord)
     EXPECT_TRUE(terminus.sensorPortInfoOverwriteTbl.empty());
 }
 
-TEST_F(TerminusInventoryTest, deviceInventoryIsTheObjectNamedAfterItsNvDevice)
+TEST_F(TerminusInventoryTest, deviceInventoryIsItsOwnObjectsAndItsParent)
 {
-    // EM writes "Dev-23.2" into a path as "Dev_23_2"; the object of that
-    // name is the device's in any category of the system inventory, and
-    // its ParentChassis is not taken then.
+    // EM writes "Dev-23.2" into a path as "Dev_23_2"; the objects of that
+    // name are the device's in any category of the system inventory, and
+    // so is the object of its ParentChassis, after them.
     std::string uuid("00000000-0000-0000-0000-000000000232");
     Terminus terminus(0x32, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
                       terminusManager);
@@ -719,15 +721,15 @@ TEST_F(TerminusInventoryTest, deviceInventoryIsTheObjectNamedAfterItsNvDevice)
     const std::vector<std::string> paths{
         chassisOf("Dev_23_2"), component, chassisOf("Dev-23.2"), module,
         chassisOf("Dev_23_20")};
-    EXPECT_EQ(std::make_pair(
-                  std::string("Dev-23.2"),
-                  std::vector<std::string>{chassisOf("Dev_23_2"), component}),
+    EXPECT_EQ(std::make_pair(std::string("Dev-23.2"),
+                             std::vector<std::string>{chassisOf("Dev_23_2"),
+                                                      component, module}),
               deviceInventoryOf(terminus, paths));
     EXPECT_EQ("Dev-23.2", terminus.deviceName);
     EXPECT_FALSE(terminus.deviceInventoryWarned);
 }
 
-TEST_F(TerminusInventoryTest, deviceInventoryFallsBackToTheParentChassis)
+TEST_F(TerminusInventoryTest, deviceInventoryHasTheParentChassisOfItsDevice)
 {
     std::string uuid("00000000-0000-0000-0000-000000000237");
     Terminus terminus(0x37, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
@@ -758,9 +760,15 @@ TEST_F(TerminusInventoryTest, deviceInventoryFallsBackToTheParentChassis)
                              std::vector<std::string>{bmcModule}),
               deviceInventoryOf(terminus, paths));
 
-    // An object named after the device wins over its module.
+    // An object named after the device comes first, its module stays.
     const std::string cpu = systemRoot + "processors/CPU_0";
     paths.push_back(cpu);
+    EXPECT_EQ(std::make_pair(std::string("CPU_0"),
+                             std::vector<std::string>{cpu, bmcModule}),
+              deviceInventoryOf(terminus, paths));
+
+    // A ParentChassis that names the device's own object is taken once.
+    addNvDevice(inventory, "CPU_0", 0x60, "processors/CPU_0");
     EXPECT_EQ(std::make_pair(std::string("CPU_0"),
                              std::vector<std::string>{cpu}),
               deviceInventoryOf(terminus, paths));
@@ -2029,52 +2037,182 @@ TEST_F(SharedSystemPathTest, lateNvDeviceIsBoundByARescan)
     EXPECT_FALSE(terminus->deviceInventoryWarned);
 }
 
-TEST_F(SharedSystemPathTest, scanBindsTheParentChassisOfItsDevice)
+/** @brief Publish a Cpu object at @p path with InstanceNumber @p instance,
+ *         whose chassis association (EM's Cpu record relation) is
+ *         @p chassis. */
+void addCpu(pldm::utils::FakeInventory& inventory, const std::string& path,
+            uint64_t instance, const std::string& chassis)
 {
-    // An HMC CPU: no object is named after the device, so it binds to its
-    // module, board/HGX_ProcessorModule_0, and the CPU linked to it. The
-    // configs of the device are loaded at the module.
+    using Associations =
+        std::vector<std::tuple<std::string, std::string, std::string>>;
+    inventory.addInterface(path, "xyz.openbmc_project.Inventory.Item.Cpu", {});
+    inventory.addInterface(path, oem_nvidia::instanceInterface,
+                           {{oem_nvidia::instanceProperty, instance}});
+    inventory.addInterface(
+        path, "xyz.openbmc_project.Association.Definitions",
+        {{"Associations",
+          Associations{{"chassis", "all_processors", chassis}}}});
+}
+
+/** @brief The paths of the inventory objects the last scan bound to
+ *         @p tid, sorted. */
+std::vector<std::string> boundPaths(pldm::tid_t tid)
+{
+    std::vector<std::string> paths =
+        InventoryManager::get().terminusData[tid].inventories |
+        std::views::elements<0> | std::ranges::to<std::vector>();
+    std::ranges::sort(paths);
+    return paths;
+}
+
+TEST_F(SharedSystemPathTest, scanBindsTheCpuOfAnHmcCpuModule)
+{
+    // As on an HMC: the device HGX_CPU_0 has no object of its own among
+    // the scanned ones (component/HGX_CPU_0 is an Item.Chassis). It binds
+    // its module and cpu/CPU_0, whose chassis is component/HGX_CPU_0, and
+    // through that Cpu the component. It does not bind cpu/CPU_1 of the
+    // other module, a Cpu linked to its component by another relation, or
+    // a Cpu whose associations cannot be read.
     constexpr pldm::tid_t tid = 0x43;
     std::string uuid("00000000-0000-0000-0000-000000000309");
     auto terminus = std::make_shared<Terminus>(
         tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
     termini[tid] = terminus;
+    InventoryManager& manager = InventoryManager::get();
+    manager.setInstance(tid, 0);
     const pldm::MctpInfo mctpInfo(0x43, uuid, "usb", 1,
                                   std::string("HGX_CPU_0"), "mctp-over-usb",
                                   std::nullopt);
     ASSERT_EQ(terminusManager.mapTid(mctpInfo, tid), tid);
     addNvDevice(inventory, "HGX_CPU_0", 0x43, "board/HGX_ProcessorModule_0");
 
-    const std::string module = std::string(pldm::em_device::systemRoot) +
-                               "board/HGX_ProcessorModule_0";
-    const std::string otherModule = std::string(pldm::em_device::systemRoot) +
-                                    "board/HGX_ProcessorModule_1";
+    const std::string root = pldm::em_device::systemRoot;
+    const std::string module = root + "board/HGX_ProcessorModule_0";
+    const std::string cpu0 = root + "cpu/CPU_0";
+    const std::string component0 = root + "component/HGX_CPU_0";
     constexpr auto moduleIntf =
         "xyz.openbmc_project.Inventory.Item.ProcessorModule";
-    using Associations =
-        std::vector<std::tuple<std::string, std::string, std::string>>;
     inventory.addInterface(module, moduleIntf, {});
+    inventory.addInterface(module, oem_nvidia::instanceInterface,
+                           {{oem_nvidia::instanceProperty, uint64_t{0}}});
+    inventory.addInterface(root + "board/HGX_ProcessorModule_1", moduleIntf,
+                           {});
+    inventory.addInterface(component0,
+                           "xyz.openbmc_project.Inventory.Item.Chassis", {});
+    addCpu(inventory, cpu0, 0, component0);
+    addCpu(inventory, root + "cpu/CPU_1", 1, root + "component/HGX_CPU_1");
+    const std::string otherRelation = root + "cpu/CPU_8";
+    addCpu(inventory, otherRelation, 0, component0);
     inventory.addInterface(
-        module, "xyz.openbmc_project.Association.Definitions",
+        otherRelation, "xyz.openbmc_project.Association.Definitions",
         {{"Associations",
-          Associations{{"", "all_processors", moduleCpuPath}}}});
-    inventory.addInterface(otherModule, moduleIntf, {});
+          std::vector<std::tuple<std::string, std::string, std::string>>{
+              {"parent_chassis", "all_chassis", component0}}}});
+    // Its Definitions cannot be read: no Associations value.
+    const std::string unreadable = root + "cpu/CPU_9";
+    addCpu(inventory, unreadable, 0, component0);
+    inventory.addInterface(unreadable,
+                           "xyz.openbmc_project.Association.Definitions", {});
     inventory.addInterface(module + "/aux_100", sensorAuxNameIntf,
                            {{"SensorId", uint64_t{100}},
                             {"AuxNames", std::vector<std::string>{"Module"}},
                             {"ParentObjPath", module}});
 
     ASSERT_EQ(PLDM_SUCCESS, scan(*terminus));
-    const std::vector<InventoryManager::Inventory>& inventories =
-        InventoryManager::get().terminusData[tid].inventories;
-    std::vector<std::string> paths;
-    for (const auto& [path, type, instance] : inventories)
-    {
-        paths.push_back(path);
-    }
-    EXPECT_EQ((std::vector<std::string>{module, moduleCpuPath}), paths);
+    EXPECT_EQ((std::vector<std::string>{module, component0, cpu0}),
+              boundPaths(tid));
+    // The configs of the device are loaded at its first object, the module.
     ASSERT_TRUE(terminus->sensorAuxNameOverwriteTbl.contains(100));
     EXPECT_EQ(module, std::get<1>(terminus->sensorAuxNameOverwriteTbl.at(100)));
+
+    // The CPU of the module resolves to Cpu homes, so its sensors are not
+    // on a fallback; the module resolves to the module.
+    manager.entityTree(tid).add(
+        10, oem_nvidia::EntityId{EntityInfo{0, PLDM_ENTITY_PROC_IO_MODULE, 0}},
+        {oem_nvidia::EntityId{EntityInfo{10, PLDM_ENTITY_PROC, 0}}});
+    const std::vector<pldm::dbus::ObjectPath> cpuHomes = manager.findInventory(
+        tid, oem_nvidia::EntityId{EntityInfo{10, PLDM_ENTITY_PROC, 0}});
+    EXPECT_EQ((std::vector<pldm::dbus::ObjectPath>{cpu0, component0}),
+              cpuHomes);
+    const std::vector<std::string> cpuHomePaths(cpuHomes.begin(),
+                                                cpuHomes.end());
+    EXPECT_FALSE(
+        manager.isFallbackAssociation(tid, cpuHomePaths, PLDM_ENTITY_PROC));
+    EXPECT_TRUE(manager.isFallbackAssociation(tid, {module}, PLDM_ENTITY_PROC));
+}
+
+TEST_F(SharedSystemPathTest, scanBindsEachC2CpuToItsOwnCpu)
+{
+    // As on the C2 BMC: CPU_0 and CPU_1 share ProcessorModule_0 (a plain
+    // ParentChassis). Each binds the module and its own cpu/ and
+    // component/ objects, never those of the other CPU.
+    using Associations =
+        std::vector<std::tuple<std::string, std::string, std::string>>;
+    const std::string root = pldm::em_device::systemRoot;
+    const std::string module = root + "board/ProcessorModule_0";
+    inventory.addInterface(
+        module, "xyz.openbmc_project.Inventory.Item.ProcessorModule", {});
+    std::map<std::string, std::shared_ptr<Terminus>> cpus;
+    for (const int index : {0, 1})
+    {
+        const std::string name = std::format("CPU_{}", index);
+        const pldm::tid_t tid = 0x44 + index;
+        std::string uuid("00000000-0000-0000-0000-00000000030A");
+        cpus[name] = std::make_shared<Terminus>(
+            tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
+        termini[tid] = cpus[name];
+        const pldm::MctpInfo mctpInfo(tid, uuid, "usb", 1, name,
+                                      "mctp-over-usb", std::nullopt);
+        ASSERT_EQ(terminusManager.mapTid(mctpInfo, tid), tid);
+        addNvDevice(inventory, name, tid, "ProcessorModule_0");
+        // component/CPU_n is an Item.Cpu too, linked to itself.
+        const std::string component = root + "component/" + name;
+        addCpu(inventory, component, index, component);
+        inventory.addInterface(
+            component, "xyz.openbmc_project.Association.Definitions",
+            {{"Associations", Associations{{"chassis", "", component}}}});
+        addCpu(inventory, root + "cpu/" + name, index, component);
+    }
+
+    for (const auto& [name, terminus] : cpus)
+    {
+        SCOPED_TRACE(name);
+        ASSERT_EQ(PLDM_SUCCESS, scan(*terminus));
+        const std::string cpu = root + "cpu/" + name;
+        EXPECT_EQ(
+            (std::vector<std::string>{module, root + "component/" + name, cpu}),
+            boundPaths(terminus->getTid()));
+        EXPECT_FALSE(InventoryManager::get().isFallbackAssociation(
+            terminus->getTid(), {cpu}, PLDM_ENTITY_PROC));
+    }
+}
+
+TEST_F(SharedSystemPathTest, scanBindsTheOwnObjectAndTheParentOfADevice)
+{
+    // As a CX9 on vr-nvl-bmc: chassis/CX_0 and its IO board. The configs
+    // are loaded at the device's own object.
+    constexpr pldm::tid_t tid = 0x46;
+    std::string uuid("00000000-0000-0000-0000-00000000030B");
+    auto terminus = std::make_shared<Terminus>(
+        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
+    termini[tid] = terminus;
+    const pldm::MctpInfo mctpInfo(0x46, uuid, "usb", 1, std::string("CX_0"),
+                                  "mctp-over-usb", std::nullopt);
+    ASSERT_EQ(terminusManager.mapTid(mctpInfo, tid), tid);
+    addNvDevice(inventory, "CX_0", 0x46, "board/IO_Board_0");
+    addPldmRecord(inventory, "CX_0");
+    const std::string boardIntf = "xyz.openbmc_project.Inventory.Item.Board";
+    const std::string ioBoard =
+        std::string(pldm::em_device::systemRoot) + "board/IO_Board_0";
+    inventory.addInterface(chassisOf("CX_0"), boardIntf, {});
+    inventory.addInterface(ioBoard, boardIntf, {});
+
+    ASSERT_EQ(PLDM_SUCCESS, scan(*terminus));
+    EXPECT_EQ((std::vector<std::string>{ioBoard, chassisOf("CX_0")}),
+              boundPaths(tid));
+    ASSERT_TRUE(terminus->sensorAuxNameOverwriteTbl.contains(100));
+    EXPECT_EQ(chassisOf("CX_0"),
+              std::get<1>(terminus->sensorAuxNameOverwriteTbl.at(100)));
 }
 
 TEST_F(SharedSystemPathTest, sysBusStateSensorInACpuGoesToThatCpu)
