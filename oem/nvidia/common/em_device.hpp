@@ -107,7 +107,7 @@ struct PldmDevice
     // sensors of the ports to the network adapter object, not to the chassis
     bool linkStateOnNetworkAdapter = false;
     // from the PLDM_Policy record of the device's kind: inventory path of
-    // the object the plug and cable sensors of the ports are associated
+    // the object the sensors of the device's OSFP entities are associated
     // with, instead of the chassis of the device; empty without a PlugParent
     // or when no object of that name exists
     std::string plugParentPath;

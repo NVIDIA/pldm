@@ -534,7 +534,7 @@ void applyPolicy(PldmDevice& out, const std::string& deviceName,
                 {
                     lg2::warning(
                         "PLDM_Policy PlugParent {PARENT} of {NAME} names no "
-                        "inventory object; the plug sensors keep the device "
+                        "inventory object; the OSFP sensors keep the device "
                         "chassis",
                         "PARENT", parent, "NAME", deviceName);
                 }

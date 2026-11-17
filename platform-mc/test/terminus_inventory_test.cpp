@@ -535,15 +535,64 @@ TEST_F(TerminusInventoryTest, loadDeviceRecordPlacesSensorsByThePlatformPolicy)
     terminus.loadDeviceRecord(record, rootPath);
     EXPECT_EQ(rootPath, parentOf(200));
 
-    // The plug and cable sensors of a port move to the PlugParent; the
-    // other sensors of the port, and those of the device, stay.
+    // A PlugParent is kept for the OSFP sensors; the names of the sensors
+    // do not place them.
     record.plugParentPath = plugParent;
     terminus.loadDeviceRecord(record, rootPath);
-    EXPECT_EQ(plugParent, parentOf(500));
-    EXPECT_EQ(plugParent, parentOf(700));
-    for (uint16_t id : {5, 200, 300, 400})
+    EXPECT_EQ(plugParent, terminus.plugParentPath);
+    for (uint16_t id : {5, 300, 400, 500, 700})
     {
         EXPECT_EQ(rootPath, parentOf(id)) << id;
+    }
+}
+
+TEST_F(TerminusInventoryTest, plugParentIsTheInventoryOfTheOsfpSensors)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000221");
+    Terminus terminus(0x7C, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    const std::string rootPath =
+        "/xyz/openbmc_project/inventory/system/chassis/HGX_ConnectX_0";
+    const std::string plugParent =
+        "/xyz/openbmc_project/inventory/system/chassis/HGX_OSFP_Board_0";
+    const std::vector<uint16_t> osfpTypes{
+        PLDM_ENTITY_OSFP, PLDM_ENTITY_LOGICAL | PLDM_ENTITY_OSFP};
+    const std::vector<uint16_t> otherTypes{
+        PLDM_ENTITY_NETWORK_CONTROLLER, PLDM_ENTITY_ETHERNET,
+        PLDM_ENTITY_ADD_IN_CARD, PLDM_ENTITY_QSFP};
+
+    // Sensor 300 has an aux-name config on the chassis, 301 has none.
+    pldm::em_device::PldmDevice record;
+    record.auxNames = {{300, "HGX_ConnectX_0_Temp_0"}};
+    record.plugParentPath = plugParent;
+    terminus.loadDeviceRecord(record, rootPath);
+
+    // The PlugParent wins over the aux-name config for an OSFP sensor.
+    for (const uint16_t type : osfpTypes)
+    {
+        EXPECT_EQ(plugParent, terminus.sensorInventoryOverride(300, type))
+            << type;
+        EXPECT_EQ(plugParent, terminus.sensorInventoryOverride(301, type))
+            << type;
+    }
+    // Other sensors keep their aux-name config, or none.
+    for (const uint16_t type : otherTypes)
+    {
+        EXPECT_EQ(rootPath, terminus.sensorInventoryOverride(300, type))
+            << type;
+        EXPECT_EQ(std::nullopt, terminus.sensorInventoryOverride(301, type))
+            << type;
+    }
+
+    // Without a PlugParent the OSFP sensors are like the others.
+    record.plugParentPath.clear();
+    terminus.loadDeviceRecord(record, rootPath);
+    for (const uint16_t type : osfpTypes)
+    {
+        EXPECT_EQ(rootPath, terminus.sensorInventoryOverride(300, type))
+            << type;
+        EXPECT_EQ(std::nullopt, terminus.sensorInventoryOverride(301, type))
+            << type;
     }
 }
 
@@ -786,13 +835,15 @@ TEST_F(TerminusInventoryTest, loadDeviceConfigsOfADeviceWithoutARecord)
     inventory.addInterface(chassisPath + "/aux_100", sensorAuxNameIntf,
                            {{"SensorId", uint64_t{100}},
                             {"AuxNames", std::vector<std::string>{"Aux"}}});
-    // The network adapter of a record that is gone.
+    // The network adapter and PlugParent of a record that is gone.
     terminus.networkAdapterPath = chassisPath + "/NetworkAdapters/NIC_0";
+    terminus.plugParentPath = chassisOf("OSFP_Board_0");
 
     // The SensorAuxName configs of the object name the sensors.
     stdexec::sync_wait(
         terminus.loadDeviceConfigs(deviceOf("Dev_234", 0x58), chassisPath));
     EXPECT_TRUE(terminus.networkAdapterPath.empty());
+    EXPECT_TRUE(terminus.plugParentPath.empty());
     ASSERT_TRUE(terminus.sensorAuxNameOverwriteTbl.contains(100));
     EXPECT_EQ((pldm::platform_mc::AuxiliaryNames{{{"en", "Aux"}}}),
               std::get<0>(terminus.sensorAuxNameOverwriteTbl.at(100)));
@@ -2448,6 +2499,162 @@ TEST_F(SharedSystemPathTest, nicSensorsOfACx9KeepTheirNetworkAdapterLink)
     ASSERT_EQ(PLDM_SUCCESS, scan(*terminus));
     ASSERT_EQ(PLDM_SUCCESS, update(*terminus));
     expectLinks(onChassis);
+}
+
+/** @brief CX_0 of vr-nvl-bmc (pdr_61) as a cx9_io device: numeric sensors
+ *         300 and 50 of the Network Controller, 500 (module temperature)
+ *         and 400 (voltage) of the OSFP cage and 100 of an Ethernet port;
+ *         state sensors 5 of the card, 200 of an Ethernet port and 700
+ *         (plug) of the OSFP cage. */
+class PlugParentTest : public SharedSystemPathTest
+{
+  protected:
+    PlugParentTest()
+    {
+        std::string uuid("00000000-0000-0000-0000-00000000030A");
+        terminus = std::make_shared<Terminus>(
+            tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
+        termini[tid] = terminus;
+        makeDevice(*terminus, "CX_0", tid);
+        inventory.addInterface(
+            platformPath + std::string("CX_0"), pldm::em_device::nvDeviceIntf,
+            {{"Name", std::string("CX_0")},
+             {"Kind", std::string("cx9_io")},
+             {"EID", uint64_t{tid}}});
+        const std::string record = platformPath + std::string("CX_0_PLDM");
+        const std::string intf = pldm::em_device::pldmDeviceIntf;
+        inventory.addInterface(record, intf,
+                               {{"Name", std::string("CX_0_PLDM")},
+                                {"NetworkAdapter", std::string("NIC_0")}});
+        inventory.addInterface(
+            record, intf + ".SensorAuxNames",
+            {{"CX_0_Temp_0", uint64_t{300}},
+             {"CX_0_Power_0", uint64_t{50}},
+             {"CX_NIC_0_Port_0_Temp_0", uint64_t{500}},
+             {"CX_NIC_0_Port_0_Voltage_0", uint64_t{400}},
+             {"CX_NIC_0_Port_0_Bits", uint64_t{100}},
+             {"CX_0", uint64_t{5}},
+             {"Port_0", uint64_t{200}},
+             {"CX_NIC_0_Port_0_Plug", uint64_t{700}}});
+        inventory.addInterface(chassisPath,
+                               "xyz.openbmc_project.Inventory.Item.Board", {});
+        inventory.addInterface(plugParent, "xyz.openbmc_project.Inventory.Item",
+                               {});
+        for (const auto& [id, type] : numericTypes)
+        {
+            terminus->numericSensors.push_back(nicNumericSensor(tid, id, type));
+        }
+        for (const auto& [id, type] : stateTypes)
+        {
+            StateSetInfo info{
+                EntityInfo{100, type, 1},
+                {StateSetData{
+                    PLDM_STATESET_ID_HEALTHSTATE,
+                    PossibleStates{PLDM_STATESET_HEALTH_STATE_NORMAL}}}};
+            std::string noPath;
+            terminus->stateSensors.push_back(std::make_shared<StateSensor>(
+                tid, false, id, info, nullptr, noPath, nullptr));
+        }
+    }
+
+    /** Publish the PLDM_Policy of @p kind with the PlugParent @p parent. */
+    void publishPolicy(const std::string& kind, const std::string& parent)
+    {
+        inventory.addInterface(platformPath + std::string("PLDM_Policy_CX9"),
+                               pldm::em_device::pldmPolicyIntf,
+                               {{"Name", std::string("PLDM_Policy_CX9")},
+                                {"Kind", kind},
+                                {"PlugParent", parent}});
+    }
+
+    /** Scan and bind the terminus, as a rebind or a refresh does. */
+    void refresh()
+    {
+        ASSERT_EQ(PLDM_SUCCESS, scan(*terminus));
+        ASSERT_EQ(PLDM_SUCCESS, update(*terminus));
+    }
+
+    /** Expect the OSFP sensors on @p osfpParent and the others on the
+     *  chassis of CX_0. */
+    void expectParents(const std::string& osfpParent) const
+    {
+        for (const std::shared_ptr<NumericSensor>& sensor :
+             terminus->numericSensors)
+        {
+            const uint16_t type = std::get<1>(sensor->getEntityInfo());
+            Associations expected{
+                {"chassis", "all_sensors",
+                 type == PLDM_ENTITY_OSFP ? osfpParent : chassisPath}};
+            // The network adapter link stays as it is.
+            if (type != PLDM_ENTITY_ETHERNET)
+            {
+                expected.emplace_back("network_adapter", "sensors",
+                                      chassisPath + "/NetworkAdapters/NIC_0");
+            }
+            EXPECT_EQ(expected,
+                      sensor->associationDefinitionsIntf->associations())
+                << sensor->sensorId;
+        }
+        for (const std::shared_ptr<StateSensor>& sensor :
+             terminus->stateSensors)
+        {
+            const uint16_t type = std::get<1>(sensor->getEntityInfo());
+            const Associations assocs =
+                sensor->stateSets.front()
+                    ->associationDefinitionsIntf->associations();
+            ASSERT_EQ(1U, assocs.size()) << sensor->sensorId;
+            EXPECT_EQ(type == PLDM_ENTITY_OSFP ? osfpParent : chassisPath,
+                      std::get<2>(assocs.front()))
+                << sensor->sensorId;
+        }
+    }
+
+    static constexpr pldm::tid_t tid = 0x45;
+    const std::string chassisPath = chassisOf("CX_0");
+    const std::string plugParent = chassisOf("HGX_OSFP_Board_0");
+    const std::map<uint16_t, uint16_t> numericTypes{
+        {300, PLDM_ENTITY_NETWORK_CONTROLLER},
+        {50, PLDM_ENTITY_NETWORK_CONTROLLER},
+        {500, PLDM_ENTITY_OSFP},
+        {400, PLDM_ENTITY_OSFP},
+        {100, PLDM_ENTITY_ETHERNET}};
+    const std::map<uint16_t, uint16_t> stateTypes{{5, PLDM_ENTITY_ADD_IN_CARD},
+                                                  {200, PLDM_ENTITY_ETHERNET},
+                                                  {700, PLDM_ENTITY_OSFP}};
+    std::shared_ptr<Terminus> terminus;
+};
+
+TEST_F(PlugParentTest, osfpSensorsGoToThePlugParentOfThePolicy)
+{
+    publishPolicy("cx9_io", "HGX_OSFP_Board_0");
+    ASSERT_NO_FATAL_FAILURE(refresh());
+    expectParents(plugParent);
+
+    // A rebind, and a refresh after Entity Manager published the records
+    // again, keep them there.
+    ASSERT_EQ(PLDM_SUCCESS, update(*terminus));
+    expectParents(plugParent);
+    ASSERT_NO_FATAL_FAILURE(refresh());
+    expectParents(plugParent);
+
+    // Once the policy is for another kind, the next refresh moves them
+    // back to the chassis.
+    publishPolicy("gpu", "HGX_OSFP_Board_0");
+    ASSERT_NO_FATAL_FAILURE(refresh());
+    expectParents(chassisPath);
+}
+
+TEST_F(PlugParentTest, sensorsOfADeviceWithoutAPolicyStayOnItsChassis)
+{
+    ASSERT_NO_FATAL_FAILURE(refresh());
+    expectParents(chassisPath);
+}
+
+TEST_F(PlugParentTest, sensorsStayOnTheChassisWithoutThePlugParentObject)
+{
+    publishPolicy("cx9_io", "No_Such_Board");
+    ASSERT_NO_FATAL_FAILURE(refresh());
+    expectParents(chassisPath);
 }
 
 } // namespace

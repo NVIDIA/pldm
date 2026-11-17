@@ -375,8 +375,9 @@ class Terminus
     exec::task<void> loadDeviceConfigs(const pldm::em_device::Device& dev,
                                        const std::string& objPath);
 
-    /** @brief Fill the aux-name and port-info tables and networkAdapterPath
-     *         from a PLDMDevice record of the device at @p objPath. */
+    /** @brief Fill the aux-name and port-info tables, networkAdapterPath
+     *         and plugParentPath from the PLDMDevice record @p record of
+     *         the device at @p objPath. */
     void loadDeviceRecord(const pldm::em_device::PldmDevice& record,
                           const std::string& objPath);
 
@@ -616,6 +617,19 @@ class Terminus
      *         for ProcessorModule, SYS_BUS and count sensors. */
     std::vector<std::string> numericSensorInventory(NumericSensor& sensor);
 
+    /** @brief The inventory a sensor of an entity of @p entityType
+     *         associates with in place of the one its PDR resolves to:
+     *         plugParentPath for an OSFP sensor when the platform policy
+     *         gives one, else the parent of its aux-name config
+     *         (getInventoryPath()).
+     *
+     *  @param[in] id - sensor ID
+     *  @param[in] entityType - entity type of the sensor's PDR
+     *  @return the inventory path, or nullopt to resolve it from the PDR
+     */
+    std::optional<ParentObjPath> sensorInventoryOverride(
+        SensorID id, pdr::EntityType entityType);
+
 #ifdef OEM_NVIDIA
     /** @brief The network_adapter link of a numeric sensor of an entity of
      *         @a entityType: one to networkAdapterPath for a Network
@@ -705,6 +719,11 @@ class Terminus
      *         record of the device; empty without a NetworkAdapter or a
      *         record */
     std::string networkAdapterPath;
+
+    /** @brief Inventory object the OSFP sensors of the device belong to,
+     *         from the PlugParent of the PLDM_Policy record of the device;
+     *         empty without one or without a record */
+    std::string plugParentPath;
 
     /**
      * @brief Table mapping SensorID to SensorEventInfo

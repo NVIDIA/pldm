@@ -376,6 +376,7 @@ exec::task<void> Terminus::loadDeviceConfigs(const pldm::em_device::Device& dev,
                                     /*namesFromRecord=*/record.has_value());
     co_await getPortInfoFromEM(objPath);
     networkAdapterPath.clear();
+    plugParentPath.clear();
     if (record)
     {
         loadDeviceRecord(*record, objPath);
@@ -389,46 +390,24 @@ exec::task<void> Terminus::loadDeviceConfigs(const pldm::em_device::Device& dev,
 void Terminus::loadDeviceRecord(const pldm::em_device::PldmDevice& record,
                                 const std::string& objPath)
 {
-    // Whether a sensor name is that of a plug or cable sensor of a port:
-    // "<...>_Port_<n>_Temp_0" (the temperature of the module) or
-    // "<...>_Port_<n>_Plug" (its presence).
-    auto isPortPlugSensorName = [](std::string_view name) {
-        constexpr std::string_view marker = "_Port_";
-        const size_t at = name.rfind(marker);
-        if (at == std::string_view::npos)
-        {
-            return false;
-        }
-        std::string_view rest = name.substr(at + marker.size());
-        const size_t digits = rest.find_first_not_of("0123456789");
-        if (digits == 0 || digits == std::string_view::npos)
-        {
-            return false;
-        }
-        rest.remove_prefix(digits);
-        return rest == "_Temp_0" || rest == "_Plug";
-    };
     networkAdapterPath = record.networkAdapter.empty()
                              ? std::string{}
                              : std::format("{}/NetworkAdapters/{}", objPath,
                                            record.networkAdapter);
+    plugParentPath = record.plugParentPath;
     for (const auto& [sensorId, name] : record.auxNames)
     {
         AuxiliaryNames auxNameTbl;
         auxNameTbl.push_back({{"en", name}});
         // A sensor belongs to the device's chassis unless the platform
-        // policy places it elsewhere: the link state of a port on the
-        // network adapter, the plug and cable sensors of a port on the
-        // PlugParent object.
+        // policy places the link state of a port on the network adapter.
+        // The policy places the OSFP sensors by their PDR entity instead,
+        // see sensorInventoryOverride().
         std::string parent = objPath;
         if (record.linkStateOnNetworkAdapter && !networkAdapterPath.empty() &&
             record.ports.contains(sensorId))
         {
             parent = networkAdapterPath;
-        }
-        else if (!record.plugParentPath.empty() && isPortPlugSensorName(name))
-        {
-            parent = record.plugParentPath;
         }
         sensorAuxNameOverwriteTbl[sensorId] =
             std::make_tuple(auxNameTbl, std::move(parent));
@@ -1460,6 +1439,19 @@ std::optional<ParentObjPath> Terminus::getInventoryPath(SensorID id)
     return std::nullopt;
 }
 
+std::optional<ParentObjPath> Terminus::sensorInventoryOverride(
+    SensorID id, [[maybe_unused]] pdr::EntityType entityType)
+{
+#ifdef OEM_NVIDIA
+    if (!plugParentPath.empty() &&
+        pdr::baseEntityType(entityType) == PLDM_ENTITY_OSFP)
+    {
+        return plugParentPath;
+    }
+#endif
+    return getInventoryPath(id);
+}
+
 #ifdef OEM_NVIDIA
 std::shared_ptr<std::tuple<PortType, std::string, uint64_t,
                            std::vector<dbus::PathAssociation>>>
@@ -2130,13 +2122,14 @@ void Terminus::updateNumericSensorAssociations()
         {
             continue;
         }
-        auto inventoryPath = getInventoryPath(ptr->sensorId);
+        const pdr::EntityType entityType = std::get<1>(ptr->getEntityInfo());
+        const std::optional<ParentObjPath> inventoryPath =
+            sensorInventoryOverride(ptr->sensorId, entityType);
         auto inventoryPaths = inventoryPath
                                   ? std::vector<std::string>{*inventoryPath}
                                   : numericSensorInventory(*ptr);
 #ifdef OEM_NVIDIA
-        ptr->setExtraAssociations(
-            networkAdapterAssociations(std::get<1>(ptr->getEntityInfo())));
+        ptr->setExtraAssociations(networkAdapterAssociations(entityType));
 #endif
         if (applyInventoryAssociation(*ptr, inventoryPaths,
                                       inventoryPath.has_value()))
@@ -2147,8 +2140,7 @@ void Terminus::updateNumericSensorAssociations()
                        "NAME", ptr->getSensorName());
         }
 #ifdef OEM_NVIDIA
-        ptr->setPhysicalContext(oem_nvidia::toPhysicalContextType(
-            std::get<1>(ptr->getEntityInfo())));
+        ptr->setPhysicalContext(oem_nvidia::toPhysicalContextType(entityType));
 #endif
     }
 }
@@ -2157,7 +2149,9 @@ void Terminus::updateStateSensorAssociations()
 {
     for (const auto& ptr : stateSensors)
     {
-        auto inventoryPath = getInventoryPath(ptr->sensorId);
+        const std::optional<ParentObjPath> inventoryPath =
+            sensorInventoryOverride(ptr->sensorId,
+                                    std::get<1>(ptr->getEntityInfo()));
         auto inventoryPaths = inventoryPath
                                   ? std::vector<std::string>{*inventoryPath}
                                   : resolveInventory(ptr->getEntityInfo());
