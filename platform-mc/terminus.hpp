@@ -375,8 +375,8 @@ class Terminus
     exec::task<void> loadDeviceConfigs(const pldm::em_device::Device& dev,
                                        const std::string& objPath);
 
-    /** @brief Fill the aux-name and port-info tables from a PLDMDevice
-     *         record of the device at @p objPath. */
+    /** @brief Fill the aux-name and port-info tables and networkAdapterPath
+     *         from a PLDMDevice record of the device at @p objPath. */
     void loadDeviceRecord(const pldm::em_device::PldmDevice& record,
                           const std::string& objPath);
 
@@ -614,6 +614,15 @@ class Terminus
      *         for ProcessorModule, SYS_BUS and count sensors. */
     std::vector<std::string> numericSensorInventory(NumericSensor& sensor);
 
+#ifdef OEM_NVIDIA
+    /** @brief The network_adapter link of a numeric sensor of an entity of
+     *         @a entityType: one to networkAdapterPath for a Network
+     *         Controller or OSFP sensor, none for others or without a
+     *         network adapter. bmcweb takes it as the RelatedItem of the
+     *         sensor. */
+    Associations networkAdapterAssociations(pdr::EntityType entityType) const;
+#endif
+
     /** @brief Redirect a SYS_BUS or MemoryController state sensor's
      *         @a paths to the CPU it belongs to. */
     void redirectStateSensorInventory(StateSensor& sensor,
@@ -689,6 +698,11 @@ class Terminus
     std::map<SensorID, std::tuple<PortType, std::string, uint64_t,
                                   std::vector<dbus::PathAssociation>>>
         sensorPortInfoOverwriteTbl{};
+
+    /** @brief <chassis>/NetworkAdapters/<NetworkAdapter> of the PLDMDevice
+     *         record of the device; empty without a NetworkAdapter or a
+     *         record */
+    std::string networkAdapterPath;
 
     /**
      * @brief Table mapping SensorID to SensorEventInfo

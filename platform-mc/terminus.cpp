@@ -375,6 +375,7 @@ exec::task<void> Terminus::loadDeviceConfigs(const pldm::em_device::Device& dev,
     co_await getSensorAuxNameFromEM(eid, objPath,
                                     /*namesFromRecord=*/record.has_value());
     co_await getPortInfoFromEM(objPath);
+    networkAdapterPath.clear();
     if (record)
     {
         loadDeviceRecord(*record, objPath);
@@ -407,6 +408,10 @@ void Terminus::loadDeviceRecord(const pldm::em_device::PldmDevice& record,
         rest.remove_prefix(digits);
         return rest == "_Temp_0" || rest == "_Plug";
     };
+    networkAdapterPath = record.networkAdapter.empty()
+                             ? std::string{}
+                             : std::format("{}/NetworkAdapters/{}", objPath,
+                                           record.networkAdapter);
     for (const auto& [sensorId, name] : record.auxNames)
     {
         AuxiliaryNames auxNameTbl;
@@ -416,10 +421,10 @@ void Terminus::loadDeviceRecord(const pldm::em_device::PldmDevice& record,
         // network adapter, the plug and cable sensors of a port on the
         // PlugParent object.
         std::string parent = objPath;
-        if (record.linkStateOnNetworkAdapter &&
-            !record.networkAdapter.empty() && record.ports.contains(sensorId))
+        if (record.linkStateOnNetworkAdapter && !networkAdapterPath.empty() &&
+            record.ports.contains(sensorId))
         {
-            parent = objPath + "/NetworkAdapters/" + record.networkAdapter;
+            parent = networkAdapterPath;
         }
         else if (!record.plugParentPath.empty() && isPortPlugSensorName(name))
         {
@@ -435,10 +440,8 @@ void Terminus::loadDeviceRecord(const pldm::em_device::PldmDevice& record,
         // NVSwitch fabric ports (.../fabrics/<fabric>/Switches/<sw>/Ports/<p>)
         // are not described by a PLDMDevice record and keep their
         // SensorPortInfo configs.
-        const std::string portParent =
-            record.networkAdapter.empty()
-                ? objPath
-                : objPath + "/NetworkAdapters/" + record.networkAdapter;
+        const std::string& portParent =
+            networkAdapterPath.empty() ? objPath : networkAdapterPath;
         dbus::PathAssociation assoc{
             "associated_port", "associated_port",
             std::format("{}/Ports/{}", portParent, port)};
@@ -2040,6 +2043,24 @@ std::vector<std::string> Terminus::numericSensorInventory(NumericSensor& sensor)
     return paths;
 }
 
+#ifdef OEM_NVIDIA
+Associations Terminus::networkAdapterAssociations(
+    pdr::EntityType entityType) const
+{
+    const pdr::EntityType baseType = pdr::baseEntityType(entityType);
+    if (networkAdapterPath.empty() ||
+        (baseType != PLDM_ENTITY_NETWORK_CONTROLLER &&
+         baseType != PLDM_ENTITY_OSFP))
+    {
+        return {};
+    }
+    // An empty reverse name would break the mapper while the adapter is
+    // not on D-Bus yet: it builds "<adapter>/<reverse>" for the pending
+    // association, which fails and drops the forward side too.
+    return {{"network_adapter", "sensors", networkAdapterPath}};
+}
+#endif
+
 void Terminus::redirectStateSensorInventory(
     [[maybe_unused]] StateSensor& sensor,
     [[maybe_unused]] std::vector<std::string>& paths)
@@ -2113,6 +2134,10 @@ void Terminus::updateNumericSensorAssociations()
         auto inventoryPaths = inventoryPath
                                   ? std::vector<std::string>{*inventoryPath}
                                   : numericSensorInventory(*ptr);
+#ifdef OEM_NVIDIA
+        ptr->setExtraAssociations(
+            networkAdapterAssociations(std::get<1>(ptr->getEntityInfo())));
+#endif
         if (applyInventoryAssociation(*ptr, inventoryPaths,
                                       inventoryPath.has_value()))
         {

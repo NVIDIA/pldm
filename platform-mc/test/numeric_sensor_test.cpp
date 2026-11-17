@@ -1416,6 +1416,48 @@ TEST_F(NumericSensorTest, sensorWithoutAnEndpointIsAssociatedLater)
 #endif
 }
 
+TEST_F(NumericSensorTest, extraAssociationsFollowTheInventoryOnes)
+{
+    using Association = std::tuple<std::string, std::string, std::string>;
+    const std::string chassisPath =
+        "/xyz/openbmc_project/inventory/system/chassis/CX_0";
+    const std::string otherPath =
+        "/xyz/openbmc_project/inventory/system/chassis/Chassis_0";
+    const Association nicLink{"network_adapter", "sensors",
+                              chassisPath + "/NetworkAdapters/NIC_0"};
+    std::shared_ptr<pldm_numeric_sensor_value_pdr> pdr =
+        makeNumericSensorValuePdr(PLDM_SENSOR_DATA_SIZE_UINT16,
+                                  PLDM_RANGE_FIELD_FORMAT_UINT16,
+                                  PLDM_SENSOR_UNIT_WATTS, 0, true);
+    std::string name{"extra_association_sensor"};
+    std::string noPath;
+    NumericSensor sensor(0x60, false, pdr, name, noPath, nullptr);
+
+    // They wait for setInventoryPaths(), and for a parent: the first
+    // association must stay the parent of the sensor.
+    sensor.setExtraAssociations({nicLink});
+    EXPECT_TRUE(sensor.associationDefinitionsIntf->associations().empty());
+    sensor.setInventoryPaths({}, false);
+    EXPECT_TRUE(sensor.associationDefinitionsIntf->associations().empty());
+    sensor.setInventoryPaths({chassisPath}, false);
+    EXPECT_EQ((std::vector<Association>{{"chassis", "all_sensors", chassisPath},
+                                        nicLink}),
+              sensor.associationDefinitionsIntf->associations());
+
+    // A re-bind replaces the parent and adds them again, once.
+    sensor.setInventoryPaths({otherPath}, false);
+    EXPECT_EQ((std::vector<Association>{{"chassis", "all_sensors", otherPath},
+                                        nicLink}),
+              sensor.associationDefinitionsIntf->associations());
+
+    // Cleared, they are gone from the next call on.
+    sensor.setExtraAssociations({});
+    sensor.setInventoryPaths({chassisPath}, false);
+    EXPECT_EQ(
+        (std::vector<Association>{{"chassis", "all_sensors", chassisPath}}),
+        sensor.associationDefinitionsIntf->associations());
+}
+
 TEST_F(NumericSensorTest, numericSensorEmptyEndpointCoverage)
 {
     std::string inventoryPath{

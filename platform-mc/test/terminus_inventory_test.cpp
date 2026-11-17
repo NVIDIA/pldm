@@ -547,6 +547,49 @@ TEST_F(TerminusInventoryTest, loadDeviceRecordPlacesSensorsByThePlatformPolicy)
     }
 }
 
+TEST_F(TerminusInventoryTest, networkAdapterLinkIsForTheSensorsOfTheNic)
+{
+    std::string uuid("00000000-0000-0000-0000-000000000220");
+    Terminus terminus(0x7B, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid,
+                      terminusManager);
+    const std::string rootPath =
+        "/xyz/openbmc_project/inventory/system/chassis/CX_0";
+    const std::vector<uint16_t> nicTypes{
+        PLDM_ENTITY_NETWORK_CONTROLLER, PLDM_ENTITY_OSFP,
+        PLDM_ENTITY_LOGICAL | PLDM_ENTITY_NETWORK_CONTROLLER,
+        PLDM_ENTITY_LOGICAL | PLDM_ENTITY_OSFP};
+
+    // The sensors of the NIC and of its OSFP cage link to the adapter.
+    pldm::em_device::PldmDevice record;
+    record.auxNames = {{300, "CX_0_Temp_0"}};
+    record.networkAdapter = "NIC_0";
+    terminus.loadDeviceRecord(record, rootPath);
+    const std::string nicPath = rootPath + "/NetworkAdapters/NIC_0";
+    EXPECT_EQ(nicPath, terminus.networkAdapterPath);
+    for (const uint16_t type : nicTypes)
+    {
+        EXPECT_EQ((Associations{{"network_adapter", "sensors", nicPath}}),
+                  terminus.networkAdapterAssociations(type))
+            << type;
+    }
+
+    // Those of the ports, of the card and of other cages do not.
+    for (const uint16_t type : {PLDM_ENTITY_ETHERNET, PLDM_ENTITY_ADD_IN_CARD,
+                                PLDM_ENTITY_CONNECTOR, PLDM_ENTITY_QSFP})
+    {
+        EXPECT_TRUE(terminus.networkAdapterAssociations(type).empty()) << type;
+    }
+
+    // A record without a NetworkAdapter leaves nothing to link to.
+    record.networkAdapter.clear();
+    terminus.loadDeviceRecord(record, rootPath);
+    EXPECT_TRUE(terminus.networkAdapterPath.empty());
+    for (const uint16_t type : nicTypes)
+    {
+        EXPECT_TRUE(terminus.networkAdapterAssociations(type).empty()) << type;
+    }
+}
+
 constexpr auto platformPath = "/xyz/openbmc_project/inventory/system/platform/";
 constexpr auto sensorAuxNameIntf =
     "xyz.openbmc_project.Configuration.SensorAuxName";
@@ -704,6 +747,8 @@ TEST_F(TerminusInventoryTest, loadDeviceConfigsLinksTheCx9PortsOfItsRecord)
 
     // The record names the link-state sensors and gives them the ports
     // nsmd creates under the NIC.
+    EXPECT_EQ(chassisPath + "/NetworkAdapters/NIC_0",
+              terminus.networkAdapterPath);
     const auto& auxNames = terminus.sensorAuxNameOverwriteTbl;
     EXPECT_EQ((pldm::platform_mc::AuxiliaryNames{{{"en", "Port_0"}}}),
               std::get<0>(auxNames.at(200)));
@@ -741,10 +786,13 @@ TEST_F(TerminusInventoryTest, loadDeviceConfigsOfADeviceWithoutARecord)
     inventory.addInterface(chassisPath + "/aux_100", sensorAuxNameIntf,
                            {{"SensorId", uint64_t{100}},
                             {"AuxNames", std::vector<std::string>{"Aux"}}});
+    // The network adapter of a record that is gone.
+    terminus.networkAdapterPath = chassisPath + "/NetworkAdapters/NIC_0";
 
     // The SensorAuxName configs of the object name the sensors.
     stdexec::sync_wait(
         terminus.loadDeviceConfigs(deviceOf("Dev_234", 0x58), chassisPath));
+    EXPECT_TRUE(terminus.networkAdapterPath.empty());
     ASSERT_TRUE(terminus.sensorAuxNameOverwriteTbl.contains(100));
     EXPECT_EQ((pldm::platform_mc::AuxiliaryNames{{{"en", "Aux"}}}),
               std::get<0>(terminus.sensorAuxNameOverwriteTbl.at(100)));
@@ -2302,6 +2350,103 @@ TEST_F(SharedSystemPathTest, sysBusStateSensorInACpuGoesToThatCpu)
     EXPECT_EQ(cpu1Path, endpoint(*terminus));
     EXPECT_FALSE(
         terminus->stateSensors.front()->isDefaultInventoryAssociated());
+}
+
+/** @brief Numeric sensor @p id of entity (100, @p entityType, 1) of
+ *         terminus @p tid, created without an inventory as
+ *         addNumericSensor() does before a scan. */
+std::shared_ptr<NumericSensor> nicNumericSensor(pldm::tid_t tid, uint16_t id,
+                                                uint16_t entityType)
+{
+    auto pdr = std::make_shared<pldm_numeric_sensor_value_pdr>();
+    pdr->sensor_id = id;
+    pdr->entity_type = entityType;
+    pdr->entity_instance_num = 1;
+    pdr->container_id = 100;
+    pdr->base_unit = PLDM_SENSOR_UNIT_DEGRESS_C;
+    pdr->sensor_data_size = PLDM_SENSOR_DATA_SIZE_UINT8;
+    pdr->range_field_format = PLDM_RANGE_FIELD_FORMAT_UINT8;
+    pdr->resolution = 1.0f;
+    std::string name = std::format("NicSensor_{}", id);
+    std::string noPath;
+    return std::make_shared<NumericSensor>(tid, false, pdr, name, noPath,
+                                           nullptr);
+}
+
+TEST_F(SharedSystemPathTest, nicSensorsOfACx9KeepTheirNetworkAdapterLink)
+{
+    // CX_0 as it is on vr-nvl-bmc: sensors 300 and 50 of the Network
+    // Controller, 500 and 400 of its OSFP cage, 100 of Ethernet port 1.
+    // Sensor 5 of the card is a state sensor there; a numeric one shows
+    // that the entity type decides.
+    constexpr pldm::tid_t tid = 0x44;
+    std::string uuid("00000000-0000-0000-0000-000000000309");
+    auto terminus = std::make_shared<Terminus>(
+        tid, 1 << PLDM_BASE | 1 << PLDM_PLATFORM, uuid, terminusManager);
+    termini[tid] = terminus;
+    ASSERT_NO_FATAL_FAILURE(makeDevice(*terminus, "CX_0", 0x44));
+    const std::string record = platformPath + std::string("CX_0_PLDM");
+    const std::string intf = pldm::em_device::pldmDeviceIntf;
+    inventory.addInterface(record, intf,
+                           {{"Name", std::string("CX_0_PLDM")},
+                            {"NetworkAdapter", std::string("NIC_0")}});
+    inventory.addInterface(
+        record, intf + ".SensorAuxNames",
+        {{"CX_0_Temp_0", uint64_t{300}},
+         {"CX_0_Power_0", uint64_t{50}},
+         {"CX_NIC_0_Port_0_Temp_0", uint64_t{500}},
+         {"CX_NIC_0_Port_0_Voltage_0", uint64_t{400}},
+         {"CX_NIC_0_Port_0_Bits", uint64_t{100}},
+         {"CX_0", uint64_t{5}}});
+    inventory.addInterface(chassisOf("CX_0"),
+                           "xyz.openbmc_project.Inventory.Item.Board", {});
+    const std::map<uint16_t, uint16_t> sensorTypes{
+        {300, PLDM_ENTITY_NETWORK_CONTROLLER},
+        {50, PLDM_ENTITY_NETWORK_CONTROLLER},
+        {500, PLDM_ENTITY_OSFP},
+        {400, PLDM_ENTITY_OSFP},
+        {100, PLDM_ENTITY_ETHERNET},
+        {5, PLDM_ENTITY_ADD_IN_CARD}};
+    for (const auto& [id, type] : sensorTypes)
+    {
+        terminus->numericSensors.push_back(nicNumericSensor(tid, id, type));
+    }
+
+    const std::string chassisPath = chassisOf("CX_0");
+    const Associations onChassis{{"chassis", "all_sensors", chassisPath}};
+    const Associations linked{
+        {"chassis", "all_sensors", chassisPath},
+        {"network_adapter", "sensors", chassisPath + "/NetworkAdapters/NIC_0"}};
+    auto expectLinks = [&terminus, &onChassis](const Associations& nic) {
+        for (const std::shared_ptr<NumericSensor>& sensor :
+             terminus->numericSensors)
+        {
+            const uint16_t type = std::get<1>(sensor->getEntityInfo());
+            const bool ofNic = type == PLDM_ENTITY_NETWORK_CONTROLLER ||
+                               type == PLDM_ENTITY_OSFP;
+            EXPECT_EQ(ofNic ? nic : onChassis,
+                      sensor->associationDefinitionsIntf->associations())
+                << sensor->sensorId;
+        }
+    };
+
+    ASSERT_EQ(PLDM_SUCCESS, scan(*terminus));
+    ASSERT_EQ(PLDM_SUCCESS, update(*terminus));
+    expectLinks(linked);
+
+    // A re-bind, and a refresh after Entity Manager published the record
+    // again, rebuild the associations: the link is there once.
+    ASSERT_EQ(PLDM_SUCCESS, update(*terminus));
+    expectLinks(linked);
+    ASSERT_EQ(PLDM_SUCCESS, scan(*terminus));
+    ASSERT_EQ(PLDM_SUCCESS, update(*terminus));
+    expectLinks(linked);
+
+    // Once the record names no NetworkAdapter, the next refresh drops it.
+    inventory.addInterface(record, intf, {{"Name", std::string("CX_0_PLDM")}});
+    ASSERT_EQ(PLDM_SUCCESS, scan(*terminus));
+    ASSERT_EQ(PLDM_SUCCESS, update(*terminus));
+    expectLinks(onChassis);
 }
 
 } // namespace

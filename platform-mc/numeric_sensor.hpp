@@ -177,9 +177,25 @@ class NumericSensor
                 assocs.emplace_back(
                     std::make_tuple(forward, reverse, path.c_str()));
             }
+            // Only after an inventory parent: updateReading() takes the
+            // first association as the parent of the sensor.
+            if (!assocs.empty())
+            {
+                assocs.insert(assocs.end(), extraAssociations.begin(),
+                              extraAssociations.end());
+            }
             associationDefinitionsIntf->associations(assocs);
             defaultInventoryAssociated = flag;
         }
+    }
+
+    /** @brief Set the associations that setInventoryPaths() adds after
+     *         the inventory ones; they take effect on its next call.
+     *  @param[in] assocs - forward, reverse, endpoint tuples
+     */
+    inline void setExtraAssociations(Associations assocs)
+    {
+        extraAssociations = std::move(assocs);
     }
 
     /** @brief Updating the physicalContext to D-Bus interface
@@ -414,6 +430,9 @@ class NumericSensor
      * Threshold interfaces accordingly
      */
     void updateThresholds();
+
+    /** @brief Associations kept across setInventoryPaths() calls */
+    Associations extraAssociations;
 
     /** @brief Amount of hysteresis associated with the sensor thresholds */
     double hysteresis{};
