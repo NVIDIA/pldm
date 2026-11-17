@@ -103,6 +103,24 @@ TEST(EmDevicePolicyComponentRule, endpointsFollowTheKind)
     EXPECT_EQ(std::vector<std::string>{bmc + "HGX_BMC_0"}, irot.endpoints);
     EXPECT_TRUE(irot.chassisEndpoint.empty());
 
+    // the CPU firmware behind the ERoT of a CPU (218) belongs to the CPU
+    // chassis; the ERoT's own firmware (65280) to the ERoT chassis
+    for (const auto* kind : {"cpu_erot", "cpu_erot_i2c"})
+    {
+        auto erot = device("MGX_ERoT_CPU_0", kind);
+        erot.parentChassis = "MGX_CPU_0";
+        EXPECT_EQ(std::vector<std::string>{chassis + "MGX_CPU_0"},
+                  componentRule(erot, "", record, 218).endpoints)
+            << kind;
+        erot.parentChassis = "board/MGX_CPU_0";
+        EXPECT_EQ(std::vector<std::string>{chassis + "MGX_CPU_0"},
+                  componentRule(erot, "", record, 218).endpoints)
+            << kind;
+        EXPECT_EQ(std::vector<std::string>{chassis + "MGX_ERoT_CPU_0"},
+                  componentRule(erot, "", record, 65280).endpoints)
+            << kind;
+    }
+
     // any other kind: the device chassis
     auto gpu = componentRule(device("HGX_GPU_0", "gpu"), "HGX_", record, 1);
     EXPECT_EQ(std::vector<std::string>{chassis + "HGX_GPU_0"}, gpu.endpoints);

@@ -52,6 +52,13 @@ inline std::string parentChassisPath(const std::string& parent)
     return bmcRoot + parent;
 }
 
+/** @brief The last segment of a ParentChassis value, which may carry a type
+ *         prefix ("board/HGX_ProcessorModule_0"). */
+inline std::string parentLeaf(const std::string& parent)
+{
+    return parent.substr(parent.rfind('/') + 1);
+}
+
 struct ComponentRule
 {
     std::string forward;
@@ -74,6 +81,7 @@ inline ComponentRule componentRule(const Device& dev, const std::string& prefix,
     constexpr uint16_t bmcFwBehindErot = 16;
     constexpr uint16_t bmcFwBehindIrot = 10;
     constexpr uint16_t cxFirmware = 1;
+    constexpr uint16_t cpuFirmwareBehindErot = 218;
     constexpr uint16_t hpmCpld = 65283;
 
     ComponentRule rule;
@@ -91,6 +99,13 @@ inline ComponentRule componentRule(const Device& dev, const std::string& prefix,
     else if (dev.kind == "irot")
     {
         rule.endpoints = {parentChassisPath(dev.parentChassis)};
+    }
+    else if ((dev.kind == "cpu_erot" || dev.kind == "cpu_erot_i2c") &&
+             id == cpuFirmwareBehindErot)
+    {
+        // the CPU firmware reached through the ERoT of the CPU belongs to
+        // the CPU chassis; the ERoT's own firmware to the ERoT chassis
+        rule.endpoints = {chassisRoot + parentLeaf(dev.parentChassis)};
     }
     else if (dev.kind == "cx9_io" && id == cxFirmware)
     {
