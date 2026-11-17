@@ -821,6 +821,7 @@ std::map<std::string, PropertyMap> cx9WithPolicies(
 std::map<std::string, std::vector<std::string>> cx9Records(size_t policies)
 {
     std::vector<std::string> policyPaths;
+    policyPaths.reserve(policies);
     for (size_t i = 0; i < policies; ++i)
     {
         policyPaths.push_back("/inventory/policy/" + std::to_string(i));

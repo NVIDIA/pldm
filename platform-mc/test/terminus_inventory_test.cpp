@@ -2265,22 +2265,23 @@ TEST_F(SharedSystemPathTest, scanBindsEachC2CpuToItsOwnCpu)
         ASSERT_EQ(terminusManager.mapTid(mctpInfo, tid), tid);
         addNvDevice(inventory, name, tid, "ProcessorModule_0");
         // component/CPU_n is an Item.Cpu too, linked to itself.
-        const std::string component = root + "component/" + name;
+        const std::string component = std::format("{}component/{}", root, name);
         addCpu(inventory, component, index, component);
         inventory.addInterface(
             component, "xyz.openbmc_project.Association.Definitions",
             {{"Associations", Associations{{"chassis", "", component}}}});
-        addCpu(inventory, root + "cpu/" + name, index, component);
+        const std::string cpu = std::format("{}cpu/{}", root, name);
+        addCpu(inventory, cpu, index, component);
     }
 
     for (const auto& [name, terminus] : cpus)
     {
         SCOPED_TRACE(name);
         ASSERT_EQ(PLDM_SUCCESS, scan(*terminus));
-        const std::string cpu = root + "cpu/" + name;
-        EXPECT_EQ(
-            (std::vector<std::string>{module, root + "component/" + name, cpu}),
-            boundPaths(terminus->getTid()));
+        const std::string component = std::format("{}component/{}", root, name);
+        const std::string cpu = std::format("{}cpu/{}", root, name);
+        EXPECT_EQ((std::vector<std::string>{module, component, cpu}),
+                  boundPaths(terminus->getTid()));
         EXPECT_FALSE(InventoryManager::get().isFallbackAssociation(
             terminus->getTid(), {cpu}, PLDM_ENTITY_PROC));
     }

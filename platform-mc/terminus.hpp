@@ -385,10 +385,6 @@ class Terminus
      *         finds one. */
     std::string deviceName;
 
-    /** @brief Whether the last scan found no device inventory for this
-     *         terminus and logged it, so that it is logged once. */
-    bool deviceInventoryWarned = false;
-
     /** @brief Read sensorRoles anew from the PLDMDevice record of the
      *         NvDevice that is the endpoint of this terminus.
      *
@@ -465,6 +461,12 @@ class Terminus
     /** @brief This value indicates if polling sensor list need to be
      * initialized */
     bool initSensorList;
+
+#ifdef OEM_NVIDIA
+    /** @brief Whether the last scan found no device inventory for this
+     *         terminus and logged it, so that it is logged once. */
+    bool deviceInventoryWarned = false;
+#endif
 
     /** @brief This struct holds the present status of the terminus resumption
      * process */
